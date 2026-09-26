@@ -3,17 +3,13 @@ import { markChains, upsertLead, leadByPhone, bumpRun, setChain } from '../db/qu
 import type { LeadInput } from '../db/types.js';
 import { normaliseUkPhone } from '../util/phone.js';
 import { leadSlug, normaliseName } from '../util/slug.js';
+import { isChainName } from '../util/business.js';
 import { log } from '../util/log.js';
 import { parseQuery, type ParsedQuery } from './parse-query.js';
 import { outwardCode, postcodeOf, searchText, type Budget, type PlaceResult } from './places.js';
 
 export interface DiscoverOpts { pages?: number; dryRun?: boolean; anyPostcode?: boolean; runId?: number; budget: Budget }
 export interface DiscoverResult { parsed: ParsedQuery; found: number; inserted: number; updated: number; skipped: Record<string, number>; chains: number }
-
-export function isDenylistedChain(name: string, denylist: string[]): boolean {
-  const n = name.toLowerCase();
-  return denylist.some((c) => n.includes(c.toLowerCase()));
-}
 
 export function placeToLead(place: PlaceResult, parsed: ParsedQuery): LeadInput {
   const postcode = postcodeOf(place);
@@ -48,6 +44,7 @@ export async function discover(rawQuery: string, opts: DiscoverOpts): Promise<Di
   const parsed = parseQuery(rawQuery);
   const scoring = loadScoring();
   log.info(`discover: "${parsed.raw}" -> category=${parsed.categoryKey} area=${parsed.area} textQuery="${parsed.textQuery}"`);
+  if (!parsed.category) log.warn(`no category in config/categories.yaml matches "${parsed.categoryRaw}". Scoring will use neutral defaults. Add keywords there, or fix existing leads with: pipeline category --query "${parsed.raw}" --set <key>`);
   const places = await searchText(parsed.textQuery, {
     pages: opts.pages,
     budget: opts.budget,
@@ -68,7 +65,7 @@ export async function discover(rawQuery: string, opts: DiscoverOpts): Promise<Di
       if (other && other.place_id !== lead.place_id && normaliseName(other.name) === normaliseName(lead.name)) { skip('duplicate_phone'); continue; }
     }
     const { id, inserted } = upsertLead(lead);
-    if (isDenylistedChain(lead.name, scoring.chain_denylist)) {
+    if (isChainName(lead.name, scoring)) {
       setChain(id, true);
       result.chains++;
     }

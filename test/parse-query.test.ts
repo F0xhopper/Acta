@@ -29,6 +29,15 @@ describe('parseQuery', () => {
     expect(p.category).toBeUndefined();
     expect(p.categoryKey).toBe('tattoo-studios');
   });
+  it('strips a trailing city from the category words and resolves new categories', () => {
+    const p = parseQuery('Gym trainer coach birmingham');
+    expect(p.categoryRaw).toBe('Gym trainer coach');
+    expect(p.categoryKey).toBe('personal_trainer');
+    expect(p.textQuery).toBe('Gym trainer coach in Birmingham, UK');
+    expect(parseQuery('coach hire in Digbeth').categoryKey).toBe('coach_hire');
+    expect(parseQuery('life coaches in Harborne').categoryKey).toBe('life_coach');
+    expect(parseQuery('Coach in birmingham').category).toBeUndefined();
+  });
   it('prefers the longest keyword match', () => {
     expect(resolveCategory('gas engineer')?.key).toBe('plumber');
     expect(resolveCategory('end of tenancy cleaning')?.key).toBe('cleaner');

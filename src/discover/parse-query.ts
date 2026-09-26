@@ -32,7 +32,7 @@ export function parseQuery(raw: string, categories: Category[] = loadCategories(
   const cleaned = raw.replace(/\s+/g, ' ').trim();
   if (!cleaned) throw new Error('Query is empty');
   const m = cleaned.match(/^(.*?)\s+(?:in|near|around)\s+(.+)$/i);
-  const categoryRaw = (m ? m[1] : cleaned).trim();
+  const categoryRaw = (m ? m[1] : cleaned).trim().replace(/[\s,]+(birmingham|brum)$/i, '').trim() || (m ? m[1] : cleaned).trim();
   let area = (m ? m[2] : 'Birmingham').trim().replace(/,?\s*(uk|england|united kingdom)$/i, '').trim();
   const mentionsBirmingham = /birmingham/i.test(area);
   const areaLabel = area.replace(/,?\s*birmingham$/i, '').trim() || 'Birmingham';

@@ -2,6 +2,7 @@
 thresholds:
   min_viability: 40
   tier_min_viability: 50
+  tier_a_min_reviews: 10          # tier A and B need an established business, not a five-review account
   adequate_site_opportunity: 35   # live sites scoring below this are excluded as adequate
   audit_fresh_days: 14
   cache_days: 7
@@ -43,6 +44,8 @@ viability:
   pays_for_marketing: 15
   ltd_high: 10
   low_rating_penalty: -15         # rating under 3.5 with 10+ reviews
+  exclude_rating_under: 3.0       # excluded outright when rating is below this ...
+  exclude_rating_min_reviews: 50  # ... across at least this many reviews
   no_phone_cap: 60
 
 total:
@@ -76,6 +79,12 @@ builders:
 
 parked_phrases: ["this domain is for sale", "domain is for sale", "buy this domain", "this domain is parked", "domain is parked", "parked free", "sedoparking", "sedo.com", "domain name is registered", "website coming soon", "site is under construction", "hugedomains", "afternic", "namecheap parking", "godaddy.com/forsale", "site not found", "account suspended", "this website has expired", "domain has expired", "this site can't be reached", "web hosting by"]
 
-chain_denylist: [dominos, "domino's", papa johns, subway, greggs, costa, starbucks, mcdonald, kfc, burger king, halfords, kwik fit, kwik-fit, ats euromaster, national tyres, formula one autocentres, specsavers, boots, superdrug, bupa, mydentist, toni & guy, toni and guy, supercuts, rush hair, regis, pizza hut, nando, wetherspoon, pret, caffe nero, tim hortons, dunelm, screwfix, toolstation, b&q, wickes, dyno, british gas, homeserve, pimlico, checkatrade, harveys, dfs, jd, sports direct, tesco, sainsbury, asda, morrisons, aldi, lidl, co-op, spar, premier, nisa, esso, bp, shell, texaco]
+chain_denylist: [dominos, "domino's", papa johns, subway, greggs, costa, starbucks, mcdonald, kfc, burger king, halfords, kwik fit, kwik-fit, ats euromaster, national tyres, formula one autocentres, specsavers, boots, superdrug, bupa, mydentist, toni & guy, toni and guy, supercuts, rush hair, regis, pizza hut, nando, wetherspoon, pret, caffe nero, tim hortons, dunelm, screwfix, toolstation, b&q, wickes, dyno, british gas, homeserve, pimlico, checkatrade, harveys, dfs, sports direct, tesco, sainsbury, asda, morrisons, aldi, lidl, co-op, spar, esso, bp, shell, texaco, national express, megabus, flixbus, stagecoach, arriva, first bus, west midlands travel, national holidays, trainline, upper crust, wh smith, whsmith, puregym, pure gym, the gym group, gym group, jd gyms, anytime fitness, david lloyd, nuffield, virgin active, snap fitness, f45, everyone active, bannatyne, fitness first, total fitness, xercise4less, energie fitness, gymbox, third space, actioncoach, travelodge, premier inn, ibis, holiday inn, hilton, marriott, easyhotel]
+
+# Names that are chains only when they match exactly (after normalisation), so "coach" doesn't catch every coach company.
+chain_exact_names: [coach, next, premier, one stop, subway]
+
+# Google place types that can never be a customer: infrastructure, lodging, institutions.
+excluded_types: [bus_station, transit_station, bus_stop, train_station, subway_station, light_rail_station, transit_depot, parking, park_and_ride, lodging, hostel, hotel, motel, bed_and_breakfast, guest_house, apartment_building, apartment_complex, extended_stay_hotel, resort_hotel, university, school, primary_school, secondary_school, preschool, hospital, church, place_of_worship, mosque, hindu_temple, synagogue, government_office, city_hall, post_office, library, park, tourist_attraction, shopping_mall, airport, courthouse, police, fire_station, embassy, cemetery, stadium]
 
 local_schema_types: [LocalBusiness, Plumber, Electrician, RoofingContractor, GeneralContractor, HomeAndConstructionBusiness, HousePainter, Locksmith, MovingCompany, HVACBusiness, HairSalon, BeautySalon, NailSalon, DaySpa, HealthAndBeautyBusiness, Restaurant, CafeOrCoffeeShop, FastFoodRestaurant, FoodEstablishment, Bakery, BarOrPub, Dentist, Physiotherapy, MedicalBusiness, MedicalClinic, AccountingService, ProfessionalService, AutoRepair, AutomotiveBusiness, PetStore, AnimalShelter, Store, Florist, DryCleaningOrLaundry, ExerciseGym, SportsActivityLocation, TravelAgency, RealEstateAgent, LegalService, ChildCare, TattooParlor, DrivingSchool]

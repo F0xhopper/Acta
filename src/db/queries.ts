@@ -70,6 +70,10 @@ export function setChain(id: number, isChain: boolean) {
   d().prepare('UPDATE leads SET is_chain = ? WHERE id = ?').run(isChain ? 1 : 0, id);
 }
 
+export function setCategoryForQuery(query: string, categoryKey: string): number {
+  return Number(d().prepare('UPDATE leads SET category_key = ? WHERE source_query = ?').run(categoryKey, query).changes);
+}
+
 // ---------- audits ----------
 
 export function getAudit(leadId: number): AuditRow | undefined {

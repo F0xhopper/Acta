@@ -3,6 +3,7 @@ import { fullLeads, isSuppressed, saveScore } from '../db/queries.js';
 import type { Channel, FullLead, ScoreRow, Tier } from '../db/types.js';
 import { isoNow } from '../util/dates.js';
 import { log } from '../util/log.js';
+import { excludedType, isChainName } from '../util/business.js';
 
 const clamp = (n: number, lo = 0, hi = 100) => Math.max(lo, Math.min(hi, Math.round(n)));
 
@@ -21,7 +22,12 @@ export function scoreLead(full: FullLead, scoring: Scoring = loadScoring(), cate
   });
   const exclude = (why: string): ScoreRow => ({ ...base(), reasons_json: JSON.stringify([why]), excluded_reason: why });
 
-  if (lead.is_chain) return exclude('Chain or franchise');
+  if (lead.is_chain || isChainName(lead.name, scoring)) return exclude('Chain or franchise');
+  const badType = excludedType(lead.primary_type, lead.types_json, scoring);
+  if (badType) return exclude(`Not a pitchable business type (${badType.replace(/_/g, ' ')})`);
+  if (lead.rating !== null && (lead.review_count ?? 0) >= scoring.viability.exclude_rating_min_reviews && lead.rating < scoring.viability.exclude_rating_under) {
+    return exclude(`Poor reputation (${lead.rating} across ${lead.review_count} reviews)`);
+  }
   if (lead.business_status && lead.business_status !== 'OPERATIONAL') return exclude(`Not operational (${lead.business_status})`);
   if (isSuppressed(lead, audit?.final_domain)) return exclude('On suppression list');
   if (!audit) return exclude('Not audited yet');
@@ -80,8 +86,9 @@ export function scoreLead(full: FullLead, scoring: Scoring = loadScoring(), cate
   const total = clamp(scoring.total.opportunity_weight * opportunity + scoring.total.viability_weight * viability);
   const tmin = scoring.thresholds.tier_min_viability;
   let t: Tier = 'C';
-  if (['none', 'down', 'broken', 'directory_only', 'facebook_only'].includes(audit.website_status) && viability >= tmin) t = 'A';
-  else if (['live', 'platform_only'].includes(audit.website_status) && opportunity >= 50 && viability >= tmin) t = 'B';
+  const established = rc >= scoring.thresholds.tier_a_min_reviews;
+  if (['none', 'down', 'broken', 'directory_only', 'facebook_only'].includes(audit.website_status) && viability >= tmin && established) t = 'A';
+  else if (['live', 'platform_only'].includes(audit.website_status) && opportunity >= 50 && viability >= tmin && established) t = 'B';
   if (viability < scoring.thresholds.min_viability) t = 'X';
 
   return {

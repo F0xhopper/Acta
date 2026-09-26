@@ -51,6 +51,22 @@ describe('scoreLead', () => {
     const s = scoreLead(full({ review_count: 2, rating: null, phone_e164: null, opening_hours_json: null }), scoring, cat);
     expect(s.viability).toBeLessThan(scoring.thresholds.min_viability); expect(s.tier).toBe('X');
   });
+  it('excludes stations, hotels and other non-customers by place type', () => {
+    expect(scoreLead(full({ primary_type: 'bus_station' }), scoring, cat).excluded_reason).toMatch(/Not a pitchable business type/);
+    expect(scoreLead(full({ primary_type: 'point_of_interest', types_json: '["lodging","point_of_interest"]' }), scoring, cat).excluded_reason).toMatch(/lodging/);
+    expect(scoreLead(full({ primary_type: 'plumber', types_json: '["plumber","point_of_interest"]' }), scoring, cat).excluded_reason).toBeNull();
+  });
+  it('excludes poor reputations outright and exact-name chains', () => {
+    expect(scoreLead(full({ rating: 2.2, review_count: 183 }), scoring, cat).excluded_reason).toMatch(/Poor reputation/);
+    expect(scoreLead(full({ rating: 2.2, review_count: 12 }), scoring, cat).excluded_reason).not.toMatch(/Poor reputation/);
+    expect(scoreLead(full({ name: 'Coach' }), scoring, cat).excluded_reason).toBe('Chain or franchise');
+    expect(scoreLead(full({ name: 'Coach Hire Plus' }), scoring, cat).excluded_reason).toBeNull();
+    expect(scoreLead(full({ name: 'PureGym Birmingham Snow Hill' }), scoring, cat).excluded_reason).toBe('Chain or franchise');
+  });
+  it('tier A needs at least ten reviews', () => {
+    const s = scoreLead(full({ review_count: 6, rating: 5 }), scoring, cat);
+    expect(s.tier).toBe('C'); expect(s.viability).toBeGreaterThanOrEqual(scoring.thresholds.tier_min_viability);
+  });
   it('walk-in categories route to walk_in', () => {
     const s = scoreLead(full({ category_key: 'barber' }), scoring, findCategory('barber'));
     expect(s.channel).toBe('walk_in');

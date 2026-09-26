@@ -31,6 +31,7 @@ const ScoringSchema = z.object({
   thresholds: z.object({
     min_viability: z.number(),
     tier_min_viability: z.number(),
+    tier_a_min_reviews: z.number().default(10),
     adequate_site_opportunity: z.number(),
     audit_fresh_days: z.number(),
     cache_days: z.number(),
@@ -62,6 +63,8 @@ const ScoringSchema = z.object({
     pays_for_marketing: z.number(),
     ltd_high: z.number(),
     low_rating_penalty: z.number(),
+    exclude_rating_under: z.number().default(3),
+    exclude_rating_min_reviews: z.number().default(50),
     no_phone_cap: z.number(),
   }),
   total: z.object({ opportunity_weight: z.number(), viability_weight: z.number() }),
@@ -75,6 +78,8 @@ const ScoringSchema = z.object({
   builders: z.array(z.object({ key: z.string(), patterns: z.array(z.string()) })),
   parked_phrases: z.array(z.string()),
   chain_denylist: z.array(z.string()),
+  chain_exact_names: z.array(z.string()).default([]),
+  excluded_types: z.array(z.string()).default([]),
   local_schema_types: z.array(z.string()),
 });
 export type Scoring = z.infer<typeof ScoringSchema>;

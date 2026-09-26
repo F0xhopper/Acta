@@ -105,3 +105,20 @@ categories:
     dm: true
     sic: ["96090"]
     must_haves: [price list, booking form, gallery, areas covered]
+  - key: personal_trainer
+    keywords: [personal trainer, personal trainers, personal training, gym trainer, gym trainers, fitness coach, fitness coaches, fitness trainer, fitness, gym, gyms, strength and conditioning, bootcamp, boot camp, pilates, yoga]
+    pays_for_marketing: true
+    dm: true
+    sic: ["93130", "85510"]
+    must_haves: [Instagram feed, transformation gallery, packages with prices from, booking or enquiry form, testimonials, qualifications and insurance]
+  - key: life_coach
+    keywords: [life coach, life coaches, business coach, business coaches, career coach, executive coach, coaching, adhd coach, mindset coach, wellbeing coach, hypnotherapist, hypnotherapy]
+    pays_for_marketing: true
+    dm: true
+    sic: ["85590", "70229"]
+    must_haves: [who it is for and the outcomes, packages with prices from, discovery call booking link, testimonials, credentials]
+  - key: coach_hire
+    keywords: [coach hire, coaches, minibus hire, minibus, coach company, coach travel, executive travel, minibus and coach]
+    pays_for_marketing: true
+    sic: ["49390"]
+    must_haves: [instant quote form, fleet with seat counts, airport and event pages, areas covered, operator licence and insurance mention]

@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { Command } from 'commander';
-import { envInt } from './config.js';
-import { finishRun, getFullLead, startRun } from './db/queries.js';
+import { envInt, findCategory, loadCategories } from './config.js';
+import { finishRun, getFullLead, setCategoryForQuery, startRun } from './db/queries.js';
 import { discover } from './discover/index.js';
 import { enrichEntities } from './discover/entity.js';
 import { placeReviews, type Budget, type PlaceReview } from './discover/places.js';
@@ -68,6 +68,14 @@ program.command('pack').argument('[slug]').option('--shortlist', 'pack everythin
 
 program.command('status').argument('<slug>').argument('<status>').option('--note <text>')
   .action((slug: string, status: string, o) => { const r = applyStatus(slug, status, o.note); console.log(r.message); if (!r.ok) process.exitCode = 1; });
+
+program.command('category').description('Set the category for every lead from a query, e.g. after the parser could not match one')
+  .requiredOption('--query <q>').requiredOption('--set <key>')
+  .action((o) => {
+    if (!findCategory(o.set)) { console.error(`Unknown category "${o.set}". Known: ${loadCategories().map((c) => c.key).join(', ')}`); process.exitCode = 1; return; }
+    const n = setCategoryForQuery(o.query, o.set);
+    console.log(`${n} leads set to ${o.set}. Now run: pipeline score --query "${o.query}"`);
+  });
 
 program.command('stats').option('--query <q>').action((o) => { console.log(summaryText(o.query)); });
 

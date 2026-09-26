@@ -1,5 +1,5 @@
 import { loadScoring } from '../config.js';
-import { bumpRun, leadsNeedingAudit, recentAuditForDomain, saveAudit } from '../db/queries.js';
+import { bumpRun, leadsNeedingAudit, markChains, recentAuditForDomain, saveAudit } from '../db/queries.js';
 import type { AuditRow, LeadRow, WebsiteStatus } from '../db/types.js';
 import { isoNow } from '../util/dates.js';
 import { keyedLock, pLimit } from '../util/limit.js';
@@ -106,5 +106,7 @@ export async function auditMany(opts: AuditOpts): Promise<{ audited: number; err
   } finally {
     await closeBrowser();
   }
+  const chains = markChains();
+  if (chains) log.info(`audit: flagged ${chains} more leads as chains by shared phone or domain`);
   return out;
 }
