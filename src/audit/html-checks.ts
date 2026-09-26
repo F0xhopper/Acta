@@ -42,7 +42,8 @@ export function runHtmlChecks(body: string, headers: Record<string, string>, fin
   const phones = new Set<string>(findUkPhones(text));
   $('a[href^="tel:"]').each((_, a) => { for (const p of findUkPhones($(a).attr('href')!.replace('tel:', ''))) phones.add(p); });
   const phonesOnPage = [...phones];
-  const phoneMatchesListing = listingPhone ? phonesOnPage.includes(listingPhone) : null;
+  // No phones on the page means we can't tell, not a mismatch.
+  const phoneMatchesListing = listingPhone && phonesOnPage.length ? phonesOnPage.includes(listingPhone) : null;
 
   let hasLocalSchema = false;
   const wanted = new Set(scoring.local_schema_types.map((t) => t.toLowerCase()));
@@ -56,8 +57,17 @@ export function runHtmlChecks(body: string, headers: Record<string, string>, fin
   const ltdHint = /\b(ltd|limited)\b/.test(footer) || /company\s*(no|number|reg)/.test(footer) || /registered in england/.test(footer);
 
   return {
-    hasViewport: /width\s*=\s*device-width/i.test(viewport),
+    hasViewport: isMobileViewport($('meta[name="viewport"]').map((_, m) => $(m).attr('content') ?? '').get()),
     title, titleLen: title?.length ?? 0, metaDescLen: metaDesc.length, h1Count: $('h1').length,
     builder, freeTierHost, copyrightYear, phonesOnPage, phoneMatchesListing, hasLocalSchema, ltdHint,
   };
+}
+
+/** device-width, or a fixed phone-width layout like Wix's width=320 mobile site. */
+export function isMobileViewport(contents: string[]): boolean {
+  return contents.some((c) => {
+    if (/width\s*=\s*device-width/i.test(c)) return true;
+    const m = c.match(/width\s*=\s*(\d{3,4})/i);
+    return !!m && Number(m[1]) <= 480;
+  });
 }

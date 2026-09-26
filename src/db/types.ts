@@ -84,6 +84,8 @@ export interface AuditRow {
   screenshot_mobile: string | null;
   screenshot_desktop: string | null;
   error: string | null;
+  listing_link_broken?: number | null;
+  rendered_rescue?: number | null;
 }
 
 export interface ScoreRow {

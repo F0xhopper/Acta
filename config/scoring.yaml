@@ -18,6 +18,7 @@ opportunity:
     live: 0
   live:
     no_https: 30
+    listing_link_broken: 20       # Google listing links to a dead page, homepage works
     no_viewport: 30
     free_tier_host: 20
     perf_under_50: 20
@@ -79,7 +80,7 @@ builders:
 
 parked_phrases: ["this domain is for sale", "domain is for sale", "buy this domain", "this domain is parked", "domain is parked", "parked free", "sedoparking", "sedo.com", "domain name is registered", "website coming soon", "site is under construction", "hugedomains", "afternic", "namecheap parking", "godaddy.com/forsale", "site not found", "account suspended", "this website has expired", "domain has expired", "this site can't be reached", "web hosting by"]
 
-chain_denylist: [dominos, "domino's", papa johns, subway, greggs, costa, starbucks, mcdonald, kfc, burger king, halfords, kwik fit, kwik-fit, ats euromaster, national tyres, formula one autocentres, specsavers, boots, superdrug, bupa, mydentist, toni & guy, toni and guy, supercuts, rush hair, regis, pizza hut, nando, wetherspoon, pret, caffe nero, tim hortons, dunelm, screwfix, toolstation, b&q, wickes, dyno, british gas, homeserve, pimlico, checkatrade, harveys, dfs, sports direct, tesco, sainsbury, asda, morrisons, aldi, lidl, co-op, spar, esso, bp, shell, texaco, national express, megabus, flixbus, stagecoach, arriva, first bus, west midlands travel, national holidays, trainline, upper crust, wh smith, whsmith, puregym, pure gym, the gym group, gym group, jd gyms, anytime fitness, david lloyd, nuffield, virgin active, snap fitness, f45, everyone active, bannatyne, fitness first, total fitness, xercise4less, energie fitness, gymbox, third space, actioncoach, travelodge, premier inn, ibis, holiday inn, hilton, marriott, easyhotel]
+chain_denylist: [dominos, "domino's", papa johns, subway, greggs, costa, starbucks, mcdonald, kfc, burger king, halfords, kwik fit, kwik-fit, ats euromaster, national tyres, formula one autocentres, specsavers, boots, superdrug, bupa, mydentist, toni & guy, toni and guy, supercuts, rush hair, regis, pizza hut, nando, wetherspoon, pret, caffe nero, tim hortons, dunelm, screwfix, toolstation, b&q, wickes, dyno, british gas, homeserve, pimlico, checkatrade, harveys, dfs, sports direct, tesco, sainsbury, asda, morrisons, aldi, lidl, co-op, spar, esso, bp, shell, texaco, national express, megabus, flixbus, stagecoach, arriva, first bus, west midlands travel, national holidays, trainline, upper crust, wh smith, whsmith, puregym, pure gym, the gym group, gym group, jd gyms, anytime fitness, david lloyd, nuffield, virgin active, snap fitness, f45, everyone active, bannatyne, fitness first, total fitness, xercise4less, energie fitness, gymbox, third space, actioncoach, savills, fine & country, fine and country, connells, purplebricks, your move, reeds rains, hunters, leaders, winkworth, foxtons, knight frank, bairstow eves, haart, martin & co, belvoir, northwood, chancellors, strutt & parker, hamptons, dexters, andrews property, lovelle, kfh, rightmove, zoopla, openrent, travelodge, premier inn, ibis, holiday inn, hilton, marriott, easyhotel]
 
 # Names that are chains only when they match exactly (after normalisation), so "coach" doesn't catch every coach company.
 chain_exact_names: [coach, next, premier, one stop, subway]

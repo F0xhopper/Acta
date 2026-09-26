@@ -10,6 +10,10 @@ describe('runHtmlChecks', () => {
     const h = runHtmlChecks(page('<h1>Hi</h1>', '<meta name="viewport" content="width=device-width, initial-scale=1"><title>Acme Plumbing | Erdington</title><meta name="description" content="Local plumber">'), {}, 'acme.co.uk', null, scoring);
     expect(h.hasViewport).toBe(true); expect(h.title).toBe('Acme Plumbing | Erdington'); expect(h.metaDescLen).toBe(13); expect(h.h1Count).toBe(1);
   });
+  it('accepts a fixed phone-width layout like Wix mobile, rejects a desktop-width one', () => {
+    expect(runHtmlChecks(page('<p>x</p>', '<meta name="viewport" content="width=320, user-scalable=yes" id="wixMobileViewport">'), {}, 'a.co.uk', null, scoring).hasViewport).toBe(true);
+    expect(runHtmlChecks(page('<p>x</p>', '<meta name="viewport" content="width=980">'), {}, 'a.co.uk', null, scoring).hasViewport).toBe(false);
+  });
   it('flags missing viewport', () => { expect(runHtmlChecks(page('<p>old site</p>'), {}, 'acme.co.uk', null, scoring).hasViewport).toBe(false); });
   it('fingerprints builders', () => {
     expect(runHtmlChecks(page('<img src="https://static.wixstatic.com/media/x.jpg">'), {}, 'acme.co.uk', null, scoring).builder).toBe('wix');

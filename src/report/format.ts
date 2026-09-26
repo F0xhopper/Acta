@@ -81,6 +81,7 @@ export function hook(r: FullLead): string {
     case 'platform_only': return `Only a booking or ordering page${host ? ` on ${host}` : ''}. No site of their own.`;
     case 'live': {
       const p: string[] = [];
+      if (audit.listing_link_broken) p.push('is linked from Google to a page that no longer exists');
       if (audit.has_viewport === 0) p.push("isn't built for phones");
       if (audit.https_ok === 0) p.push('has no HTTPS, so browsers mark it not secure');
       if (audit.lh_perf !== null && audit.lh_perf < 50) p.push(`is slow on a phone (Lighthouse ${audit.lh_perf}/100)`);

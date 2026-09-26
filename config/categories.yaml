@@ -122,3 +122,69 @@ categories:
     pays_for_marketing: true
     sic: ["49390"]
     must_haves: [instant quote form, fleet with seat counts, airport and event pages, areas covered, operator licence and insurance mention]
+  - key: estate_agent
+    keywords: [estate agent, estate agents, letting agent, letting agents, lettings, property management, estate agency, real estate]
+    pays_for_marketing: true
+    sic: ["68310", "68320"]
+    must_haves: [property search or live listings feed, free valuation form, landlord services page, fees page, reviews, Propertymark or TPO membership]
+  - key: solicitor
+    keywords: [solicitor, solicitors, law firm, lawyer, lawyers, conveyancing, immigration lawyer, family law]
+    pays_for_marketing: true
+    sic: ["69102"]
+    must_haves: [practice area pages, fixed fees where possible, SRA number, team page, enquiry form, reviews]
+  - key: driving_school
+    keywords: [driving school, driving schools, driving instructor, driving instructors, driving lessons]
+    pays_for_marketing: true
+    dm: true
+    sic: ["85530"]
+    must_haves: [lesson prices and packages, areas covered, pass rate or passes gallery, booking form, manual and automatic]
+  - key: decorator
+    keywords: [painter, painters, decorator, decorators, painter and decorator, painters and decorators, plasterer, plasterers, plastering]
+    pays_for_marketing: true
+    sic: ["43341", "43310"]
+    must_haves: [before and after gallery, interior and exterior pages, free quote form, areas covered]
+  - key: fitter
+    keywords: [kitchen fitter, kitchen fitters, bathroom fitter, bathroom fitters, carpet fitter, carpet fitters, flooring, tiler, tilers, joiner, joiners, carpenter, carpenters, handyman, handymen]
+    pays_for_marketing: true
+    sic: ["43320", "43330"]
+    must_haves: [project gallery, service pages, free quote form, areas covered, reviews]
+  - key: window_cleaner
+    keywords: [window cleaner, window cleaners, window cleaning, gutter cleaning, pressure washing, driveway cleaning]
+    pays_for_marketing: true
+    sic: ["81221"]
+    must_haves: [instant quote form, areas and rounds covered, services list, insurance mention]
+  - key: florist
+    keywords: [florist, florists, flower shop, flowers]
+    pays_for_marketing: true
+    walk_in: true
+    dm: true
+    sic: ["47760"]
+    must_haves: [shop with delivery, wedding and funeral pages, same-day delivery area, Instagram feed]
+  - key: tattoo
+    keywords: [tattoo, tattoos, tattoo studio, tattoo parlour, tattooist, piercing, piercings]
+    pays_for_marketing: true
+    walk_in: true
+    dm: true
+    sic: ["96090"]
+    must_haves: [artist portfolios, booking and deposit form, aftercare page, Instagram feed, opening hours]
+  - key: photographer
+    keywords: [photographer, photographers, photography, videographer, wedding photographer]
+    pays_for_marketing: true
+    dm: true
+    sic: ["74201", "74202"]
+    must_haves: [portfolio gallery, packages with prices from, enquiry form with date, reviews]
+  - key: tutor
+    keywords: [tutor, tutors, tutoring, tuition, tuition centre, music lessons, music teacher]
+    pays_for_marketing: true
+    sic: ["85590"]
+    must_haves: [subjects and levels, prices, results or testimonials, DBS mention, enquiry form]
+  - key: childcare
+    keywords: [nursery, nurseries, childminder, childminders, day nursery, childcare]
+    pays_for_marketing: true
+    sic: ["88910"]
+    must_haves: [Ofsted rating and report link, fees and funded hours, room and day routine pages, visit booking form]
+  - key: vet
+    keywords: [vet, vets, veterinary, veterinary practice]
+    pays_for_marketing: true
+    sic: ["75000"]
+    must_haves: [services, pet health plan, register form, emergency out-of-hours info, team]

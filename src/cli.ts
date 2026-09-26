@@ -4,7 +4,8 @@ import { envInt, findCategory, loadCategories } from './config.js';
 import { finishRun, getFullLead, setCategoryForQuery, startRun } from './db/queries.js';
 import { discover } from './discover/index.js';
 import { enrichEntities } from './discover/entity.js';
-import { placeReviews, type Budget, type PlaceReview } from './discover/places.js';
+import { BudgetExceeded, placeReviews, type Budget, type PlaceReview } from './discover/places.js';
+import { expandAreas } from './discover/areas.js';
 import { auditMany } from './audit/index.js';
 import { scoreAll } from './score/score.js';
 import { writeShortlist, runOutDir } from './report/shortlist.js';
@@ -104,15 +105,24 @@ program.command('stats').option('--query <q>').action((o) => { console.log(summa
 program.command('run').description('discover + audit + entity + score + shortlist + pack for one query or a file of queries')
   .argument('[query]').option('--file <path>', 'one query per line')
   .option('--top <n>', 'max shortlist rows', '25').option('--pages <n>', 'pages of 20 results, max 3', '3').option('--min-viability <n>').option('--tiers <list>')
+  .option('--areas <group|list>', 'fan the trade across an area group from config/areas.yaml, or a comma list')
   .option('--no-psi').option('--no-screenshots').option('--reviews').option('--any-postcode').option('--dry-run')
   .action(async (query: string | undefined, o) => {
-    const queries = o.file ? readFileSync(o.file, 'utf8').split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('#')) : query ? [query] : [];
+    let queries = o.file ? readFileSync(o.file, 'utf8').split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('#')) : query ? [query] : [];
+    if (o.areas) queries = queries.flatMap((q) => expandAreas(q, o.areas));
+    if (queries.length > 1) log.info(`running ${queries.length} searches: ${queries.join(' | ')}`);
     if (!queries.length) { console.error('Give a query or --file'); process.exitCode = 1; return; }
     const b = budget();
     for (const q of queries) {
       const runId = startRun(q);
       log.info(`=== run ${runId}: ${q} ===`);
-      const d = await discover(q, { pages: Number(o.pages), dryRun: o.dryRun, anyPostcode: o.anyPostcode, runId, budget: b });
+      let d;
+      try {
+        d = await discover(q, { pages: Number(o.pages), dryRun: o.dryRun, anyPostcode: o.anyPostcode, runId, budget: b });
+      } catch (e) {
+        if (e instanceof BudgetExceeded) { log.warn(`${e.message} Stopping before "${q}". Cached searches rerun free.`); finishRun(runId); break; }
+        throw e;
+      }
       if (o.dryRun) { await auditMany({ query: d.parsed.raw, dryRun: true }); await enrichEntities({ query: d.parsed.raw, dryRun: true }); finishRun(runId); continue; }
       await auditMany({ query: d.parsed.raw, psi: o.psi, screenshots: o.screenshots, runId });
       await enrichEntities({ query: d.parsed.raw, runId });
@@ -129,4 +139,7 @@ program.command('run').description('discover + audit + entity + score + shortlis
     log.info(`Places requests used this invocation: ${b.used}/${b.max}`);
   });
 
-program.parseAsync(process.argv).catch((e) => { log.error((e as Error).message); process.exitCode = 1; });
+program.parseAsync(process.argv)
+  .catch((e) => { log.error((e as Error).message); process.exitCode = 1; })
+  // Keep-alive sockets and browser handles can hold the event loop open after the work is done.
+  .finally(() => process.exit(process.exitCode ?? 0));

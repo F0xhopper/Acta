@@ -42,6 +42,7 @@ export function scoreLead(full: FullLead, scoring: Scoring = loadScoring(), cate
   if (statusReason[audit.website_status]) reasons.push(statusReason[audit.website_status]);
   if (audit.website_status === 'live') {
     const add = (pts: number, why: string) => { opportunity += pts; reasons.push(why); };
+    if (audit.listing_link_broken) add(o.live.listing_link_broken, 'Google listing links to a page that no longer exists');
     if (audit.https_ok === 0) add(o.live.no_https, 'No HTTPS');
     if (audit.has_viewport === 0) add(o.live.no_viewport, 'Not mobile-friendly (no viewport meta)');
     if (audit.free_tier_host) add(o.live.free_tier_host, `Free-tier site on ${audit.final_domain}`);

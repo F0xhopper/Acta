@@ -25,9 +25,9 @@ describe('parseQuery', () => {
     expect(parseQuery('cafes in Birmingham UK').textQuery).toBe('cafes in Birmingham, UK');
   });
   it('falls back to a slug for unknown categories', () => {
-    const p = parseQuery('tattoo studios in Digbeth');
+    const p = parseQuery('escape rooms in Digbeth');
     expect(p.category).toBeUndefined();
-    expect(p.categoryKey).toBe('tattoo-studios');
+    expect(p.categoryKey).toBe('escape-rooms');
   });
   it('strips a trailing city from the category words and resolves new categories', () => {
     const p = parseQuery('Gym trainer coach birmingham');

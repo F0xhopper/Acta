@@ -1,0 +1,39 @@
+# Area groups for sweeps: pnpm pipeline run "plumbers" --areas trades
+# Each area becomes its own query ("plumbers in Erdington", ...), which gets round Google's 60-result cap
+# and returns local owner-operators instead of the biggest firms in the city.
+groups:
+  high_streets:   # walk-in verticals: barbers, salons, cafes, takeaways, florists, tattoo
+    - Kings Heath
+    - Moseley
+    - Stirchley
+    - Harborne
+    - Bearwood
+    - Erdington
+    - Boldmere
+    - Selly Oak
+    - Sparkhill
+    - Small Heath
+    - Handsworth
+    - Alum Rock
+  trades:         # plumbers, electricians, roofers, builders, landscapers, decorators, fitters
+    - Erdington
+    - Kingstanding
+    - Great Barr
+    - Castle Bromwich
+    - Sheldon
+    - Yardley
+    - Acocks Green
+    - Hall Green
+    - Northfield
+    - Kings Norton
+    - Quinton
+    - Sutton Coldfield
+  affluent:       # dentists, accountants, solicitors, physios, estate agents, clinics
+    - Edgbaston
+    - Harborne
+    - Moseley
+    - Sutton Coldfield
+    - Solihull
+    - Shirley
+    - Jewellery Quarter
+    - Hall Green

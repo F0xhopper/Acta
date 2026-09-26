@@ -40,6 +40,7 @@ const ScoringSchema = z.object({
     status: z.record(z.string(), z.number()),
     live: z.object({
       no_https: z.number(),
+      listing_link_broken: z.number().default(20),
       no_viewport: z.number(),
       free_tier_host: z.number(),
       perf_under_50: z.number(),

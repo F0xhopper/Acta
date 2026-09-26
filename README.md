@@ -43,7 +43,7 @@ pnpm pipeline run "plumbers in Erdington"
 ```
 
 1. **Discover.** Google Places Text Search, up to three pages, with a per-run request budget and a seven-day cache. Filters to the target postcode area, drops closed businesses, dedups, flags chains.
-2. **Audit.** Classifies each website as none, social-only, directory-only, platform-only, down, broken or live. Live sites get HTML checks (mobile viewport, builder, free-tier host, copyright year, schema, phone match), Lighthouse mobile scores via PageSpeed Insights, and phone and desktop screenshots.
+2. **Audit.** Classifies each website as none, social-only, directory-only, platform-only, down, broken or live. Every site that isn't a dead domain then gets a second opinion in a real phone browser, which also takes the screenshots. That catches three things a plain fetch gets wrong: builders like Wix that add their mobile setup with JavaScript, sites behind bot protection that block scripts but load for people, and Google listings that link to a dead inner page while the homepage works. Live sites get HTML checks on both versions (mobile viewport, builder, free-tier host, copyright year, schema, phone match) and Lighthouse mobile scores via PageSpeed Insights.
 3. **Entity.** Matches each business against Companies House. A high-confidence match means it's a limited company, which is the only case where UK law allows cold email. Everyone else gets phone, walk-in or DM.
 4. **Score.** Opportunity (how much a site would help) and viability (active, reachable, likely to pay), combined into tiers A to X with plain-English reasons.
 5. **Shortlist and packs.** A Markdown table and CSV per run, a pool summary, and a folder per lead with screenshots, Lighthouse JSON and a draft pitch in the right channel.
@@ -73,6 +73,8 @@ Set a billing alert on the Google Cloud project. The request cap should keep you
 
 ```
 pnpm pipeline run "cafes in Moseley"                 # the whole chain for one query
+pnpm pipeline run "plumbers" --areas trades --pages 2  # one trade across an area group from config/areas.yaml
+pnpm pipeline run "barbers" --areas "Bearwood, Harborne"   # or across a list you give it
 pnpm pipeline run --file queries.example.txt         # one query per line
 pnpm pipeline run "barbers in Kings Heath" --dry-run # plan the requests, make none
 
@@ -107,9 +109,16 @@ The leaderboard refreshes on every `run`, `shortlist` and `status` change, so it
 
 Re-running a query updates listing data, skips audits fresher than 14 days, and never resets pipeline status. Anything you've marked contacted, won or lost stays off future shortlists. `lost` and `do_not_contact` also go on a suppression list.
 
+## Getting good results
+
+- **Narrow area, specific trade.** "Personal trainers in Kings Heath" beats "gym trainer coach birmingham". Whole-city searches hit Google's 60-result cap and return the biggest firms, who least need you.
+- **Sweep, don't widen.** `--areas` turns one trade into one search per suburb. The groups in `config/areas.yaml` are tuned by vertical: `high_streets` for walk-in trades, `trades` for plumbers and builders, `affluent` for dentists, solicitors and estate agents. Twelve areas at two pages is 24 Places requests, inside the default cap of 30. If the cap is hit the sweep stops cleanly, and cached searches rerun free.
+- **Use a word the config knows.** Categories decide the channel, the site must-haves and the "pays for marketing" bonus. There are 30, from plumbers to vets. If a search prints "no category matches", fix it without refetching: `pnpm pipeline category --query "..." --set <key>`.
+- **Check the leaderboard's yield table.** It ranks every search by tier A plus B per ten businesses found. Go back to the areas and trades at the top.
+
 ## Scoring
 
-**Opportunity, 0 to 100.** No site, dead site or directory-only listing scores 90 to 100. Live sites start at 0 and add points for no HTTPS, no mobile viewport, a free-tier host, poor Lighthouse performance, an old copyright year, a cheap builder, weak SEO basics and missing schema. A live site under 35 is excluded as adequate.
+**Opportunity, 0 to 100.** No site, dead site or directory-only listing scores 90 to 100. Live sites start at 0 and add points for a Google listing that links to a dead page, no HTTPS, no mobile viewport, a free-tier host, poor Lighthouse performance, an old copyright year, a cheap builder, weak SEO basics and missing schema. A live site under 35 is excluded as adequate.
 
 **Viability, 0 to 100.** Review count and rating, hours listed, whether the category usually pays for marketing, and a bonus for limited companies. Capped at 60 with no phone number. Chains and closed businesses are excluded.
 
@@ -141,6 +150,7 @@ After the first run in a new vertical:
 pnpm test                                   # offline unit tests
 pnpm typecheck
 pnpm exec tsx scripts/smoke-audit.ts [url]  # fetch, classify, screenshot without API keys
+pnpm exec tsx scripts/check-viewport.ts <url>  # what viewport a real phone browser sees
 ```
 
 ## Legal notes
