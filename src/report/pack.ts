@@ -5,6 +5,7 @@ import type { FullLead } from '../db/types.js';
 import type { PlaceReview } from '../discover/places.js';
 import { displayUkPhone } from '../util/phone.js';
 import { draftPitch } from './pitch.js';
+import { hook, link, nextAction, siteUrl, telLink } from './format.js';
 
 const yn = (v: number | null | undefined) => (v === null || v === undefined ? 'unknown' : v ? 'yes' : 'no');
 
@@ -36,6 +37,12 @@ export function writePack(outDir: string, full: FullLead, reviews: PlaceReview[]
   const md = `# ${lead.name}
 
 **${lead.category_raw}** in **${lead.area}**. Tier **${score?.tier ?? '?'}**, total **${score?.total ?? '?'}** (opportunity ${score?.opportunity ?? '?'}, viability ${score?.viability ?? '?'}).
+
+${[link('Google Maps', lead.google_maps_url), siteUrl(full) ? link('Current website', siteUrl(full)) : null, lead.phone_e164 ? telLink(lead.phone_e164) : null, copied.mobile ? link('Their site on a phone', copied.mobile) : null].filter(Boolean).join(' · ')}
+
+> ${hook(full)}
+
+**Next step:** ${nextAction(full)}
 
 ## Listing
 

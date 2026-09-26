@@ -10,12 +10,20 @@ import { scoreAll } from './score/score.js';
 import { writeShortlist, runOutDir } from './report/shortlist.js';
 import { writePack } from './report/pack.js';
 import { summaryText, writeSummary } from './report/summary.js';
+import { writeLeaderboard } from './report/leaderboard.js';
+import { hook } from './report/format.js';
+import { displayUkPhone } from './util/phone.js';
+import type { FullLead } from './db/types.js';
 import { applyStatus } from './crm/status.js';
 import { log, setVerbose } from './util/log.js';
 
 const program = new Command();
 program.name('pipeline').description('Find Birmingham businesses that need a website, audit them, score them, shortlist them.');
 program.option('-v, --verbose', 'verbose logging').hook('preAction', (cmd) => { if (cmd.opts().verbose) setVerbose(true); });
+
+function printTop(rows: FullLead[], n = 5) {
+  rows.slice(0, n).forEach((r, i) => console.log(`  ${i + 1}. [${r.score?.tier} ${r.score?.total}] ${r.lead.name}  ${displayUkPhone(r.lead.phone_e164) || 'no phone'}  ${hook(r)}`));
+}
 
 const budget = (): Budget => ({ used: 0, max: envInt('PLACES_MAX_REQUESTS_PER_RUN', 30) });
 const tiersOf = (s?: string) => (s ? s.split(',').map((t) => t.trim().toUpperCase()).filter(Boolean) : undefined);
@@ -48,7 +56,12 @@ program.command('score').option('--query <q>').action((o) => { console.log(JSON.
 program.command('shortlist').option('--query <q>').option('--top <n>', 'max rows', '25').option('--min-viability <n>').option('--tiers <list>', 'e.g. A,B')
   .action((o) => {
     const r = writeShortlist({ query: o.query, top: Number(o.top), minViability: o.minViability ? Number(o.minViability) : undefined, tiers: tiersOf(o.tiers) });
+    for (const full of r.rows) writePack(r.outDir, full);
+    writeSummary(r.outDir, o.query);
+    const lb = writeLeaderboard();
     console.log(`${r.rows.length} leads -> ${r.mdPath}`);
+    printTop(r.rows);
+    console.log(`leaderboard -> ${lb.mdPath}`);
   });
 
 program.command('pack').argument('[slug]').option('--shortlist', 'pack everything on the current shortlist').option('--query <q>').option('--top <n>', 'max shortlist rows', '25')
@@ -67,7 +80,16 @@ program.command('pack').argument('[slug]').option('--shortlist', 'pack everythin
   });
 
 program.command('status').argument('<slug>').argument('<status>').option('--note <text>')
-  .action((slug: string, status: string, o) => { const r = applyStatus(slug, status, o.note); console.log(r.message); if (!r.ok) process.exitCode = 1; });
+  .action((slug: string, status: string, o) => {
+    const r = applyStatus(slug, status, o.note);
+    console.log(r.message);
+    if (!r.ok) { process.exitCode = 1; return; }
+    console.log(`leaderboard -> ${writeLeaderboard().mdPath}`);
+  });
+
+program.command('leaderboard').description('Rank every lead across every search, plus in-progress and results')
+  .option('--top <n>', 'rows in the full table', '50')
+  .action((o) => { const r = writeLeaderboard(Number(o.top)); console.log(`${r.ready.length} leads ready to pitch -> ${r.mdPath}`); printTop(r.ready, 10); });
 
 program.command('category').description('Set the category for every lead from a query, e.g. after the parser could not match one')
   .requiredOption('--query <q>').requiredOption('--set <key>')
@@ -101,7 +123,9 @@ program.command('run').description('discover + audit + entity + score + shortlis
       finishRun(runId);
       log.info(`shortlist: ${s.rows.length} leads -> ${s.mdPath}`);
       log.info(`summary: ${summaryPath}`);
+      printTop(s.rows);
     }
+    if (!o.dryRun) log.info(`leaderboard: ${writeLeaderboard().mdPath}`);
     log.info(`Places requests used this invocation: ${b.used}/${b.max}`);
   });
 

@@ -84,16 +84,26 @@ pnpm pipeline shortlist --query "cafes in Moseley" --top 20 --tiers A,B
 pnpm pipeline pack <slug> [--reviews]                # --reviews calls Place Details, higher-priced SKU
 pnpm pipeline status <slug> contacted --note "called, texting link"
 pnpm pipeline stats [--query "..."]
+pnpm pipeline leaderboard [--top 50]
+pnpm pipeline category --query "..." --set personal_trainer   # fix leads whose search matched no category
 ```
 
-Output lands in `out/<date>-<query>/`:
+Output lands in `out/`:
 
 ```
-shortlist.md      ranked table with tier, scores, entity, channel, reasons
-shortlist.csv     same rows for a spreadsheet or CRM
-summary.md        pool stats and requests used
-leads/<slug>/     lead.json, notes.md (audit, must-haves, draft pitch), screenshots, lighthouse.json
+LEADERBOARD.md          start here: every lead across every search, ranked, with pitch cards,
+                        in-progress leads, results, and which searches yield best
+leaderboard.csv         same ranking for a spreadsheet
+<date>-<query>/
+  shortlist.md          one search: at a glance, "pitch these first" cards, full ranking, excluded leads
+  shortlist.csv         same rows with hook, reasons and next step
+  summary.md            funnel, top 5, website breakdown, why leads were excluded, what to do next
+  leads/<slug>/         notes.md (links, hook, audit, must-haves, draft pitch), screenshots, lighthouse.json
 ```
+
+Every table links the business to Google Maps, the website to the live site, the phone to a tap-to-call link, and each row to its pitch pack. Each lead gets a one-line hook you can say to the owner and a next step in the right channel.
+
+The leaderboard refreshes on every `run`, `shortlist` and `status` change, so it's always the current to-do list. `pnpm pipeline leaderboard` regenerates it on demand.
 
 Re-running a query updates listing data, skips audits fresher than 14 days, and never resets pipeline status. Anything you've marked contacted, won or lost stays off future shortlists. `lost` and `do_not_contact` also go on a suppression list.
 
