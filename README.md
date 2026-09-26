@@ -1,12 +1,42 @@
 # Acta
 
-*Acta non verba.* Find local businesses that need a website, audit what they have, score the opportunity, and hand you a ranked shortlist with the evidence to pitch. You build the site and make the call. Acta does the finding.
+*Acta non verba.* Deeds, not words.
 
-Starting in Birmingham, UK. Built to run anywhere with a Google Places listing.
+## The goal
 
-## What v1 does
+Acta is an end-to-end pipeline for a build-first web studio. Instead of pitching a local business and hoping they'll pay for a website, it builds the website first and then shows it to them with a price. The whole loop, from finding a business to sending the email, is meant to run with a human only at the two points that matter: choosing who to pitch, and replying when they answer.
 
-One command takes a plain-English search and produces a shortlist:
+The full flow:
+
+```
+ find businesses with no website or a bad one
+   -> audit what they have (dead site, Facebook only, not mobile friendly, slow)
+   -> score the opportunity and how likely they are to pay
+   -> you pick the ones worth building
+   -> research the vertical, competitors and modern design references
+   -> build a bespoke, fast, mobile-first, SEO-ready site on a preview URL
+   -> screenshot it next to their current site with Lighthouse scores
+   -> draft the pitch in the right channel and send it, with your approval
+   -> follow up twice, track replies, stop on any no
+   -> on a yes: take payment, attach their domain, hand over, bill monthly
+```
+
+It starts in Birmingham, UK, and is built to work anywhere with a Google Places listing.
+
+## Where it is now: v1
+
+v1 automates the first three stages and hands you a ranked shortlist with evidence. Building and outreach are still manual, using the scripts in [docs/PLAYBOOK.md](docs/PLAYBOOK.md). The design for the remaining stages, including the automated build agent and email sending, is in [docs/PIPELINE.md](docs/PIPELINE.md).
+
+| Stage | v1 | Later |
+|---|---|---|
+| Discover, audit, score, shortlist, pitch packs | automated | |
+| Pick who to build | you | you, always |
+| Research, build, deploy preview, evidence | by hand, with the playbook | phase 1: build agent |
+| Draft and send outreach, follow-ups, CRM | by hand | phase 2: sends on your approval |
+| Payment, domain, handover, monthly billing | by hand | phase 3 |
+| Scheduled weekly runs, reporting | by hand | phase 4 |
+
+One command runs v1 for a plain-English search:
 
 ```
 pnpm pipeline run "plumbers in Erdington"
@@ -17,8 +47,6 @@ pnpm pipeline run "plumbers in Erdington"
 3. **Entity.** Matches each business against Companies House. A high-confidence match means it's a limited company, which is the only case where UK law allows cold email. Everyone else gets phone, walk-in or DM.
 4. **Score.** Opportunity (how much a site would help) and viability (active, reachable, likely to pay), combined into tiers A to X with plain-English reasons.
 5. **Shortlist and packs.** A Markdown table and CSV per run, a pool summary, and a folder per lead with screenshots, Lighthouse JSON and a draft pitch in the right channel.
-
-Building and outreach are manual in v1. The scripts for both are in [docs/PLAYBOOK.md](docs/PLAYBOOK.md). The design for the automated build stage and later phases is in [docs/PIPELINE.md](docs/PIPELINE.md).
 
 ## Setup
 
