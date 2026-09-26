@@ -1,0 +1,80 @@
+import { loadScoring } from '../config.js';
+import { markChains, upsertLead, leadByPhone, bumpRun, setChain } from '../db/queries.js';
+import type { LeadInput } from '../db/types.js';
+import { normaliseUkPhone } from '../util/phone.js';
+import { leadSlug, normaliseName } from '../util/slug.js';
+import { log } from '../util/log.js';
+import { parseQuery, type ParsedQuery } from './parse-query.js';
+import { outwardCode, postcodeOf, searchText, type Budget, type PlaceResult } from './places.js';
+
+export interface DiscoverOpts { pages?: number; dryRun?: boolean; anyPostcode?: boolean; runId?: number; budget: Budget }
+export interface DiscoverResult { parsed: ParsedQuery; found: number; inserted: number; updated: number; skipped: Record<string, number>; chains: number }
+
+export function isDenylistedChain(name: string, denylist: string[]): boolean {
+  const n = name.toLowerCase();
+  return denylist.some((c) => n.includes(c.toLowerCase()));
+}
+
+export function placeToLead(place: PlaceResult, parsed: ParsedQuery): LeadInput {
+  const postcode = postcodeOf(place);
+  const name = place.displayName?.text?.trim() || 'Unknown';
+  return {
+    slug: leadSlug(parsed.area, parsed.categoryKey, name),
+    place_id: place.id,
+    name,
+    category_key: parsed.categoryKey,
+    category_raw: parsed.categoryRaw,
+    area: parsed.area,
+    source_query: parsed.raw,
+    address: place.formattedAddress ?? null,
+    postcode,
+    outward_code: outwardCode(postcode),
+    lat: place.location?.latitude ?? null,
+    lng: place.location?.longitude ?? null,
+    phone_e164: normaliseUkPhone(place.internationalPhoneNumber ?? place.nationalPhoneNumber),
+    website_url: place.websiteUri ?? null,
+    google_maps_url: place.googleMapsUri ?? null,
+    rating: place.rating ?? null,
+    review_count: place.userRatingCount ?? null,
+    business_status: place.businessStatus ?? null,
+    primary_type: place.primaryType ?? null,
+    types_json: place.types ? JSON.stringify(place.types) : null,
+    opening_hours_json: place.regularOpeningHours?.weekdayDescriptions ? JSON.stringify(place.regularOpeningHours.weekdayDescriptions) : null,
+    raw_json: JSON.stringify(place),
+  };
+}
+
+export async function discover(rawQuery: string, opts: DiscoverOpts): Promise<DiscoverResult> {
+  const parsed = parseQuery(rawQuery);
+  const scoring = loadScoring();
+  log.info(`discover: "${parsed.raw}" -> category=${parsed.categoryKey} area=${parsed.area} textQuery="${parsed.textQuery}"`);
+  const places = await searchText(parsed.textQuery, {
+    pages: opts.pages,
+    budget: opts.budget,
+    dryRun: opts.dryRun,
+    onRequest: () => { if (opts.runId) bumpRun(opts.runId, 'places_requests'); },
+  });
+  const result: DiscoverResult = { parsed, found: places.length, inserted: 0, updated: 0, skipped: {}, chains: 0 };
+  const skip = (why: string) => { result.skipped[why] = (result.skipped[why] ?? 0) + 1; };
+  if (opts.dryRun) return result;
+
+  for (const place of places) {
+    if (!place.id) { skip('no_id'); continue; }
+    if (place.businessStatus && place.businessStatus !== 'OPERATIONAL') { skip('not_operational'); continue; }
+    const lead = placeToLead(place, parsed);
+    if (!opts.anyPostcode && !(lead.outward_code && /^B\d/.test(lead.outward_code))) { skip('outside_birmingham'); continue; }
+    if (lead.phone_e164) {
+      const other = leadByPhone(lead.phone_e164);
+      if (other && other.place_id !== lead.place_id && normaliseName(other.name) === normaliseName(lead.name)) { skip('duplicate_phone'); continue; }
+    }
+    const { id, inserted } = upsertLead(lead);
+    if (isDenylistedChain(lead.name, scoring.chain_denylist)) {
+      setChain(id, true);
+      result.chains++;
+    }
+    if (inserted) result.inserted++; else result.updated++;
+  }
+  result.chains += markChains();
+  log.info(`discover: found=${result.found} inserted=${result.inserted} updated=${result.updated} skipped=${JSON.stringify(result.skipped)} chains=${result.chains}`);
+  return result;
+}

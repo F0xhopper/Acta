@@ -1,0 +1,104 @@
+import { findCategory, loadScoring, type Category, type Scoring } from '../config.js';
+import { fullLeads, isSuppressed, saveScore } from '../db/queries.js';
+import type { Channel, FullLead, ScoreRow, Tier } from '../db/types.js';
+import { isoNow } from '../util/dates.js';
+import { log } from '../util/log.js';
+
+const clamp = (n: number, lo = 0, hi = 100) => Math.max(lo, Math.min(hi, Math.round(n)));
+
+export function pickChannel(full: FullLead, category: Category | undefined): Channel {
+  if (full.ch?.match_confidence === 'high') return 'email';
+  if (category?.walk_in) return 'walk_in';
+  if (category?.dm && !full.lead.phone_e164) return 'dm';
+  return 'phone';
+}
+
+export function scoreLead(full: FullLead, scoring: Scoring = loadScoring(), category: Category | undefined = findCategory(full.lead.category_key)): ScoreRow {
+  const { lead, audit, ch } = full;
+  const reasons: string[] = [];
+  const base = (): ScoreRow => ({
+    lead_id: lead.id, scored_at: isoNow(), opportunity: 0, viability: 0, total: 0, tier: 'X', channel: pickChannel(full, category), reasons_json: '[]', excluded_reason: null,
+  });
+  const exclude = (why: string): ScoreRow => ({ ...base(), reasons_json: JSON.stringify([why]), excluded_reason: why });
+
+  if (lead.is_chain) return exclude('Chain or franchise');
+  if (lead.business_status && lead.business_status !== 'OPERATIONAL') return exclude(`Not operational (${lead.business_status})`);
+  if (isSuppressed(lead, audit?.final_domain)) return exclude('On suppression list');
+  if (!audit) return exclude('Not audited yet');
+
+  // ---- opportunity ----
+  const o = scoring.opportunity;
+  let opportunity = o.status[audit.website_status] ?? 0;
+  const statusReason: Record<string, string> = {
+    none: 'No website on Google listing', down: 'Website is down', broken: 'Website is broken', directory_only: 'Only a directory listing, no real site',
+    facebook_only: 'Only a social media page, no real site', platform_only: 'Only a booking or ordering platform page',
+  };
+  if (statusReason[audit.website_status]) reasons.push(statusReason[audit.website_status]);
+  if (audit.website_status === 'live') {
+    const add = (pts: number, why: string) => { opportunity += pts; reasons.push(why); };
+    if (audit.https_ok === 0) add(o.live.no_https, 'No HTTPS');
+    if (audit.has_viewport === 0) add(o.live.no_viewport, 'Not mobile-friendly (no viewport meta)');
+    if (audit.free_tier_host) add(o.live.free_tier_host, `Free-tier site on ${audit.final_domain}`);
+    if (audit.lh_perf !== null && audit.lh_perf < 50) {
+      add(o.live.perf_under_50, `Slow on mobile (Lighthouse ${audit.lh_perf})`);
+      if (audit.lh_perf < 30) opportunity += o.live.perf_under_30_extra;
+    }
+    if (audit.copyright_year && new Date().getFullYear() - audit.copyright_year >= o.live.copyright_stale_years) add(o.live.copyright_stale, `Copyright ${audit.copyright_year}, looks unmaintained`);
+    if (audit.builder && scoring.cheap_builders.includes(audit.builder)) add(o.live.cheap_builder, `Built on ${audit.builder}`);
+    if (audit.lh_seo !== null && audit.lh_seo < 70) add(o.live.seo_under_70, `Weak SEO basics (Lighthouse SEO ${audit.lh_seo})`);
+    if (!audit.title || audit.meta_desc_len === 0) add(o.live.no_title_or_desc, 'Missing title or meta description');
+    if (audit.has_local_schema === 0) add(o.live.no_schema, 'No LocalBusiness schema');
+    if (audit.phone_matches_listing === 0) add(o.live.phone_mismatch, 'Phone on site differs from Google listing');
+    if (audit.ttfb_ms !== null && audit.ttfb_ms > o.live.ttfb_over_ms) add(o.live.ttfb_slow, `Slow server (${audit.ttfb_ms} ms to first byte)`);
+    if (!audit.builder && audit.lh_perf !== null && audit.lh_perf >= 80 && reasons.length === 0) reasons.push('Modern site');
+  }
+  opportunity = clamp(opportunity);
+  if (audit.website_status === 'live' && opportunity < scoring.thresholds.adequate_site_opportunity) {
+    return { ...exclude('Site is adequate'), opportunity, channel: pickChannel(full, category) };
+  }
+
+  // ---- viability ----
+  const v = scoring.viability;
+  let viability = 0;
+  const rc = lead.review_count ?? 0;
+  const band = v.reviews.find((r) => rc >= r.min);
+  if (band) viability += band.points;
+  if (lead.rating !== null) {
+    if (lead.rating >= 4.0) viability += v.rating_4_0;
+    if (lead.rating >= 4.5) viability += v.rating_4_5_extra;
+    if (lead.rating < 3.5 && rc >= 10) { viability += v.low_rating_penalty; reasons.push(`Low rating ${lead.rating} across ${rc} reviews`); }
+  }
+  if (rc > 0 && lead.rating !== null) reasons.push(`${rc} reviews at ${lead.rating}`);
+  else reasons.push('No reviews yet');
+  if (lead.opening_hours_json) viability += v.hours_listed;
+  if (category?.pays_for_marketing) viability += v.pays_for_marketing;
+  if (ch?.match_confidence === 'high') { viability += v.ltd_high; reasons.push('Limited company, cold email allowed'); }
+  else reasons.push('Entity unknown, treat as sole trader (no cold email)');
+  if (!lead.phone_e164) { viability = Math.min(viability, v.no_phone_cap); reasons.push('No phone number listed'); }
+  viability = clamp(viability);
+
+  const total = clamp(scoring.total.opportunity_weight * opportunity + scoring.total.viability_weight * viability);
+  const tmin = scoring.thresholds.tier_min_viability;
+  let t: Tier = 'C';
+  if (['none', 'down', 'broken', 'directory_only', 'facebook_only'].includes(audit.website_status) && viability >= tmin) t = 'A';
+  else if (['live', 'platform_only'].includes(audit.website_status) && opportunity >= 50 && viability >= tmin) t = 'B';
+  if (viability < scoring.thresholds.min_viability) t = 'X';
+
+  return {
+    lead_id: lead.id, scored_at: isoNow(), opportunity, viability, total, tier: t, channel: pickChannel(full, category),
+    reasons_json: JSON.stringify(reasons.slice(0, 6)), excluded_reason: t === 'X' ? `Viability ${viability} below floor` : null,
+  };
+}
+
+export function scoreAll(opts: { query?: string } = {}): { scored: number; byTier: Record<string, number> } {
+  const scoring = loadScoring();
+  const out = { scored: 0, byTier: {} as Record<string, number> };
+  for (const full of fullLeads({ query: opts.query })) {
+    const s = scoreLead(full, scoring);
+    saveScore(s);
+    out.scored++;
+    out.byTier[s.tier] = (out.byTier[s.tier] ?? 0) + 1;
+  }
+  log.info(`score: ${out.scored} leads scored ${JSON.stringify(out.byTier)}`);
+  return out;
+}

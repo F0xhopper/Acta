@@ -1,0 +1,107 @@
+# Category definitions. `keywords` are matched against the query's category words.
+# pays_for_marketing: verticals that routinely spend on leads and will pay for a site.
+# walk_in: prefer a walk-in pitch. dm: Instagram/Facebook DM is a good secondary channel.
+# must_haves: what the new site needs, used in the pitch pack notes.
+categories:
+  - key: plumber
+    keywords: [plumber, plumbers, plumbing, heating engineer, gas engineer, boiler]
+    pays_for_marketing: true
+    sic: ["43220"]
+    must_haves: [emergency call-out banner, Gas Safe number if applicable, service areas, boiler and bathroom service pages]
+  - key: electrician
+    keywords: [electrician, electricians, electrical]
+    pays_for_marketing: true
+    sic: ["43210"]
+    must_haves: [NICEIC or NAPIT badge if applicable, EICR and rewire service pages, emergency call-out, service areas]
+  - key: roofer
+    keywords: [roofer, roofers, roofing]
+    pays_for_marketing: true
+    sic: ["43910"]
+    must_haves: [emergency repairs, flat and pitched roof pages, before and after gallery, service areas]
+  - key: builder
+    keywords: [builder, builders, building contractor, extensions, loft conversion]
+    pays_for_marketing: true
+    sic: ["41202", "43390"]
+    must_haves: [project gallery, extensions and conversions pages, quote form, accreditations]
+  - key: landscaper
+    keywords: [landscaper, landscapers, landscaping, landscape gardener, gardener, gardening, fencing, paving]
+    pays_for_marketing: true
+    sic: ["81300"]
+    must_haves: [before and after gallery, patios and fencing pages, seasonal services, quote form]
+  - key: cleaner
+    keywords: [cleaner, cleaners, cleaning, end of tenancy, carpet cleaning]
+    pays_for_marketing: true
+    sic: ["81210", "81220", "81299"]
+    must_haves: [domestic and commercial pages, end of tenancy page, instant quote form, insurance and DBS mention]
+  - key: garage
+    keywords: [garage, garages, mot, mechanic, mechanics, car repair, tyres]
+    pays_for_marketing: true
+    sic: ["45200"]
+    must_haves: [MOT booking, services list with prices from, opening hours, map, reviews]
+  - key: barber
+    keywords: [barber, barbers, barbershop]
+    pays_for_marketing: false
+    walk_in: true
+    dm: true
+    sic: ["96020"]
+    must_haves: [price list, booking link, Instagram feed, opening hours, map]
+  - key: beauty
+    keywords: [beauty, beauty salon, nails, nail salon, lashes, brows, aesthetics, hairdresser, hairdressers, hair salon]
+    pays_for_marketing: true
+    walk_in: true
+    dm: true
+    sic: ["96020"]
+    must_haves: [treatment menu with prices, booking link, Instagram feed, gallery, opening hours]
+  - key: cafe
+    keywords: [cafe, cafes, coffee shop, coffee]
+    pays_for_marketing: false
+    walk_in: true
+    dm: true
+    sic: ["56102"]
+    must_haves: [menu, opening hours, map, Instagram feed, photos]
+  - key: takeaway
+    keywords: [takeaway, takeaways, fast food, pizza, kebab, chinese, indian, fish and chips]
+    pays_for_marketing: false
+    walk_in: true
+    dm: true
+    sic: ["56103"]
+    must_haves: [menu, order link, opening hours, delivery area, map]
+  - key: restaurant
+    keywords: [restaurant, restaurants]
+    pays_for_marketing: true
+    walk_in: true
+    dm: true
+    sic: ["56101"]
+    must_haves: [menu, booking link, opening hours, gallery, map]
+  - key: dentist
+    keywords: [dentist, dentists, dental]
+    pays_for_marketing: true
+    sic: ["86230"]
+    must_haves: [treatments with prices from, new patient page, team page, booking form, GDC and CQC mention]
+  - key: accountant
+    keywords: [accountant, accountants, accounting, bookkeeper, bookkeeping]
+    pays_for_marketing: true
+    sic: ["69201", "69202"]
+    must_haves: [services for sole traders and limited companies, pricing packages, contact form, credentials]
+  - key: physio
+    keywords: [physio, physiotherapist, physiotherapy, osteopath, chiropractor, sports massage]
+    pays_for_marketing: true
+    sic: ["86900"]
+    must_haves: [conditions treated, booking link, practitioner bios, prices, registration bodies]
+  - key: removals
+    keywords: [removals, removal company, man and van, movers]
+    pays_for_marketing: true
+    sic: ["49420"]
+    must_haves: [instant quote form, services list, areas covered, insurance mention, reviews]
+  - key: locksmith
+    keywords: [locksmith, locksmiths]
+    pays_for_marketing: true
+    sic: ["80200", "95290"]
+    must_haves: [emergency call-out banner, response time, areas covered, pricing from]
+  - key: pet
+    keywords: [dog groomer, dog grooming, pet groomer, dog walker, dog walking, pet sitting]
+    pays_for_marketing: true
+    walk_in: false
+    dm: true
+    sic: ["96090"]
+    must_haves: [price list, booking form, gallery, areas covered]

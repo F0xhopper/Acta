@@ -1,0 +1,7 @@
+# One query per line. Lines starting with # are ignored.
+# pnpm pipeline run --file queries.example.txt
+plumbers in Erdington
+electricians in Kings Heath
+barbers in Moseley
+cafes in Stirchley
+roofers in Sutton Coldfield

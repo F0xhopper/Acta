@@ -1,0 +1,81 @@
+# Weights, thresholds and lists used by classify, html-checks and score.
+thresholds:
+  min_viability: 40
+  tier_min_viability: 50
+  adequate_site_opportunity: 35   # live sites scoring below this are excluded as adequate
+  audit_fresh_days: 14
+  cache_days: 7
+
+opportunity:
+  status:
+    none: 100
+    down: 100
+    broken: 90
+    directory_only: 90
+    facebook_only: 85
+    platform_only: 70
+    live: 0
+  live:
+    no_https: 30
+    no_viewport: 30
+    free_tier_host: 20
+    perf_under_50: 20
+    perf_under_30_extra: 10
+    copyright_stale_years: 3
+    copyright_stale: 15
+    cheap_builder: 10
+    seo_under_70: 10
+    no_title_or_desc: 5
+    no_schema: 5
+    phone_mismatch: 5
+    ttfb_over_ms: 1500
+    ttfb_slow: 5
+
+viability:
+  reviews:
+    - { min: 100, points: 40 }
+    - { min: 30, points: 35 }
+    - { min: 10, points: 25 }
+    - { min: 5, points: 10 }
+  rating_4_0: 15
+  rating_4_5_extra: 5
+  hours_listed: 10
+  pays_for_marketing: 15
+  ltd_high: 10
+  low_rating_penalty: -15         # rating under 3.5 with 10+ reviews
+  no_phone_cap: 60
+
+total:
+  opportunity_weight: 0.5
+  viability_weight: 0.5
+
+hosts:
+  social: [facebook.com, fb.com, fb.me, instagram.com, linktr.ee, linktree.com, tiktok.com, x.com, twitter.com, wa.me, whatsapp.com, nextdoor.co.uk, nextdoor.com, youtube.com, snapchat.com]
+  directory: [yell.com, checkatrade.com, bark.com, trustatrader.com, mybuilder.com, ratedpeople.com, business.site, thomsonlocal.com, cylex-uk.co.uk, scoot.co.uk, 192.com, yelp.co.uk, yelp.com, freeindex.co.uk, hotfrog.co.uk, trustpilot.com, google.com, goo.gl, maps.app.goo.gl, bing.com]
+  platform: [fresha.com, booksy.com, treatwell.co.uk, just-eat.co.uk, deliveroo.co.uk, ubereats.com, foodhub.co.uk, order.online, square.site, setmore.com, calendly.com, bookwhen.com, simplybook.it, vagaro.com, ordering.app, flipdish.com]
+  free_tier: [wixsite.com, weebly.com, wordpress.com, godaddysites.com, site123.me, strikingly.com, mystrikingly.com, webnode.co.uk, webnode.com, square.site, business.site, sites.google.com, carrd.co, yolasite.com, webs.com, jimdosite.com, jimdofree.com, ueniweb.com, mailchimpsites.com, blogspot.com]
+
+cheap_builders: [wix, godaddy, weebly, jimdo, yell, ueni, site123, strikingly]
+
+builders:
+  - { key: wix, patterns: ["wixstatic.com", "wix.com", "x-wix-", "wixsite"] }
+  - { key: squarespace, patterns: ["squarespace.com", "squarespace-cdn", "static1.squarespace"] }
+  - { key: godaddy, patterns: ["img1.wsimg.com", "secureserver.net", "godaddysites", "godaddy.com/websites"] }
+  - { key: weebly, patterns: ["weebly.com", "editmysite.com"] }
+  - { key: jimdo, patterns: ["jimdo", "jimstatic"] }
+  - { key: ionos, patterns: ["mywebsite-editor", "ionos", "1and1", "1&1"] }
+  - { key: yell, patterns: ["powered by yell", "yellbusiness", "yell.com/sites", "yellsites"] }
+  - { key: ueni, patterns: ["ueni.com", "ueniweb"] }
+  - { key: site123, patterns: ["site123.me", "site123"] }
+  - { key: strikingly, patterns: ["strikingly"] }
+  - { key: wordpress, patterns: ["wp-content", "wp-includes", "generator\" content=\"wordpress"] }
+  - { key: shopify, patterns: ["cdn.shopify.com", "shopify"] }
+  - { key: googlesites, patterns: ["sites.google.com"] }
+  - { key: webflow, patterns: ["webflow.com", "webflow.io"] }
+  - { key: framer, patterns: ["framer.com", "framerusercontent"] }
+
+parked_phrases: ["this domain is for sale", "domain is for sale", "buy this domain", "this domain is parked", "domain is parked", "parked free", "sedoparking", "sedo.com", "domain name is registered", "website coming soon", "site is under construction", "hugedomains", "afternic", "namecheap parking", "godaddy.com/forsale", "site not found", "account suspended", "this website has expired", "domain has expired", "this site can't be reached", "web hosting by"]
+
+chain_denylist: [dominos, "domino's", papa johns, subway, greggs, costa, starbucks, mcdonald, kfc, burger king, halfords, kwik fit, kwik-fit, ats euromaster, national tyres, formula one autocentres, specsavers, boots, superdrug, bupa, mydentist, toni & guy, toni and guy, supercuts, rush hair, regis, pizza hut, nando, wetherspoon, pret, caffe nero, tim hortons, dunelm, screwfix, toolstation, b&q, wickes, dyno, british gas, homeserve, pimlico, checkatrade, harveys, dfs, jd, sports direct, tesco, sainsbury, asda, morrisons, aldi, lidl, co-op, spar, premier, nisa, esso, bp, shell, texaco]
+
+local_schema_types: [LocalBusiness, Plumber, Electrician, RoofingContractor, GeneralContractor, HomeAndConstructionBusiness, HousePainter, Locksmith, MovingCompany, HVACBusiness, HairSalon, BeautySalon, NailSalon, DaySpa, HealthAndBeautyBusiness, Restaurant, CafeOrCoffeeShop, FastFoodRestaurant, FoodEstablishment, Bakery, BarOrPub, Dentist, Physiotherapy, MedicalBusiness, MedicalClinic, AccountingService, ProfessionalService, AutoRepair, AutomotiveBusiness, PetStore, AnimalShelter, Store, Florist, DryCleaningOrLaundry, ExerciseGym, SportsActivityLocation, TravelAgency, RealEstateAgent, LegalService, ChildCare, TattooParlor, DrivingSchool]
