@@ -8,8 +8,16 @@ import { log } from '../util/log.js';
 import { parseQuery, type ParsedQuery } from './parse-query.js';
 import { outwardCode, postcodeOf, searchText, type Budget, type PlaceResult } from './places.js';
 
-export interface DiscoverOpts { pages?: number; dryRun?: boolean; anyPostcode?: boolean; runId?: number; budget: Budget }
+export interface DiscoverOpts { pages?: number; dryRun?: boolean; anyPostcode?: boolean; runId?: number; budget: Budget; variants?: boolean }
 export interface DiscoverResult { parsed: ParsedQuery; found: number; inserted: number; updated: number; skipped: Record<string, number>; chains: number }
+
+/** The main search, plus the category's alternative search terms when --variants is on. Same area, different words, more owner-operators. */
+export function textQueries(parsed: ParsedQuery, variants: boolean): string[] {
+  const base = [parsed.textQuery];
+  if (!variants || !parsed.category?.search_terms.length) return base;
+  const where = parsed.textQuery.replace(/^.*? in /, '');
+  return [...new Set([...base, ...parsed.category.search_terms.map((t) => `${t} in ${where}`)])];
+}
 
 export function placeToLead(place: PlaceResult, parsed: ParsedQuery): LeadInput {
   const postcode = postcodeOf(place);
@@ -36,7 +44,17 @@ export function placeToLead(place: PlaceResult, parsed: ParsedQuery): LeadInput 
     primary_type: place.primaryType ?? null,
     types_json: place.types ? JSON.stringify(place.types) : null,
     opening_hours_json: place.regularOpeningHours?.weekdayDescriptions ? JSON.stringify(place.regularOpeningHours.weekdayDescriptions) : null,
-    raw_json: JSON.stringify(place),
+    raw_json: JSON.stringify({ ...place, reviews: undefined }),
+    type_label: place.primaryTypeDisplayName?.text ?? null,
+    editorial_summary: place.editorialSummary?.text ?? null,
+    reviews_json: place.reviews?.length ? JSON.stringify(place.reviews.map((r) => ({
+      rating: r.rating ?? null,
+      text: (r.text?.text ?? '').replace(/\s+/g, ' ').slice(0, 600),
+      when: r.relativePublishTimeDescription ?? null,
+      at: r.publishTime ?? null,
+      author: r.authorAttribution?.displayName ?? null,
+    }))) : null,
+    last_review_at: place.reviews?.map((r) => r.publishTime ?? '').filter(Boolean).sort().pop() ?? null,
   };
 }
 
@@ -45,12 +63,16 @@ export async function discover(rawQuery: string, opts: DiscoverOpts): Promise<Di
   const scoring = loadScoring();
   log.info(`discover: "${parsed.raw}" -> category=${parsed.categoryKey} area=${parsed.area} textQuery="${parsed.textQuery}"`);
   if (!parsed.category) log.warn(`no category in config/categories.yaml matches "${parsed.categoryRaw}". Scoring will use neutral defaults. Add keywords there, or fix existing leads with: pipeline category --query "${parsed.raw}" --set <key>`);
-  const places = await searchText(parsed.textQuery, {
-    pages: opts.pages,
-    budget: opts.budget,
-    dryRun: opts.dryRun,
-    onRequest: () => { if (opts.runId) bumpRun(opts.runId, 'places_requests'); },
-  });
+  const places: PlaceResult[] = [];
+  for (const tq of textQueries(parsed, !!opts.variants)) {
+    if (tq !== parsed.textQuery) log.info(`discover: variant "${tq}"`);
+    places.push(...await searchText(tq, {
+      pages: opts.pages,
+      budget: opts.budget,
+      dryRun: opts.dryRun,
+      onRequest: () => { if (opts.runId) bumpRun(opts.runId, 'places_requests'); },
+    }));
+  }
   const result: DiscoverResult = { parsed, found: places.length, inserted: 0, updated: 0, skipped: {}, chains: 0 };
   const skip = (why: string) => { result.skipped[why] = (result.skipped[why] ?? 0) + 1; };
   if (opts.dryRun) return result;

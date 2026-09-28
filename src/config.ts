@@ -22,6 +22,7 @@ const CategorySchema = z.object({
   dm: z.boolean().default(false),
   sic: z.array(z.string()).default([]),
   must_haves: z.array(z.string()).default([]),
+  search_terms: z.array(z.string()).default([]),
 });
 export type Category = z.infer<typeof CategorySchema>;
 
@@ -67,6 +68,10 @@ const ScoringSchema = z.object({
     exclude_rating_under: z.number().default(3),
     exclude_rating_min_reviews: z.number().default(50),
     no_phone_cap: z.number(),
+    recent_review_months: z.number().default(12),
+    recent_reviews: z.number().default(10),
+    stale_review_months: z.number().default(24),
+    stale_reviews: z.number().default(-15),
   }),
   total: z.object({ opportunity_weight: z.number(), viability_weight: z.number() }),
   hosts: z.object({

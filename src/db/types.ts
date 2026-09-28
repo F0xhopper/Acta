@@ -30,6 +30,10 @@ export interface LeadRow {
   opening_hours_json: string | null;
   is_chain: number;
   raw_json: string | null;
+  type_label: string | null;
+  editorial_summary: string | null;
+  reviews_json: string | null;
+  last_review_at: string | null;
   discovered_at: string;
   last_seen_at: string;
 }
@@ -85,6 +89,7 @@ export interface AuditRow {
   screenshot_desktop: string | null;
   error: string | null;
   listing_link_broken?: number | null;
+  site_description?: string | null;
   rendered_rescue?: number | null;
 }
 

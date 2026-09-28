@@ -16,6 +16,7 @@ export interface HtmlChecks {
   phoneMatchesListing: boolean | null;
   hasLocalSchema: boolean;
   ltdHint: boolean;
+  description: string | null;
 }
 
 export function runHtmlChecks(body: string, headers: Record<string, string>, finalDomain: string | null, listingPhone: string | null, scoring: Scoring): HtmlChecks {
@@ -56,7 +57,10 @@ export function runHtmlChecks(body: string, headers: Record<string, string>, fin
   const footer = ($('footer').text() + ' ' + text.slice(-1500)).toLowerCase();
   const ltdHint = /\b(ltd|limited)\b/.test(footer) || /company\s*(no|number|reg)/.test(footer) || /registered in england/.test(footer);
 
+  const description = extractDescription($);
+
   return {
+    description,
     hasViewport: isMobileViewport($('meta[name="viewport"]').map((_, m) => $(m).attr('content') ?? '').get()),
     title, titleLen: title?.length ?? 0, metaDescLen: metaDesc.length, h1Count: $('h1').length,
     builder, freeTierHost, copyrightYear, phonesOnPage, phoneMatchesListing, hasLocalSchema, ltdHint,
@@ -70,4 +74,25 @@ export function isMobileViewport(contents: string[]): boolean {
     const m = c.match(/width\s*=\s*(\d{3,4})/i);
     return !!m && Number(m[1]) <= 480;
   });
+}
+
+const JUNK_DESC = /just another wordpress site|lorem ipsum|coming soon|under construction|^home$|^welcome$|powered by|enable javascript|cookie|^untitled/i;
+
+export function cleanDescription(t: string | undefined | null): string | null {
+  const c = (t ?? '').replace(/\s+/g, ' ').trim();
+  if (c.length < 40 || JUNK_DESC.test(c)) return null;
+  return c.length > 300 ? `${c.slice(0, 297).replace(/\s+\S*$/, '')}…` : c;
+}
+
+/** The business describing itself: meta description, then Open Graph, then the first real paragraph. */
+function extractDescription($: cheerio.CheerioAPI): string | null {
+  const meta = cleanDescription($('meta[name="description"]').attr('content')) ?? cleanDescription($('meta[property="og:description"]').attr('content'));
+  if (meta) return meta;
+  let para: string | null = null;
+  $('main p, article p, section p, body p').each((_, p) => {
+    if (para) return;
+    const t = $(p).text();
+    if (t.replace(/\s+/g, ' ').trim().length >= 80) para = cleanDescription(t);
+  });
+  return para;
 }

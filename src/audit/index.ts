@@ -25,7 +25,7 @@ function emptyAudit(lead: LeadRow, status: WebsiteStatus, runId?: number): Audit
     https_ok: null, http_redirects_to_https: null, has_viewport: null, title: null, title_len: null, meta_desc_len: null, h1_count: null,
     builder: null, free_tier_host: null, copyright_year: null, phone_on_page: null, phone_matches_listing: null, has_local_schema: null, ltd_hint: null,
     lh_perf: null, lh_seo: null, lh_a11y: null, lh_bp: null, lh_error: null, lh_json_path: null, screenshot_mobile: null, screenshot_desktop: null, error: null,
-    listing_link_broken: null, rendered_rescue: null,
+    listing_link_broken: null, rendered_rescue: null, site_description: null,
   };
 }
 
@@ -62,6 +62,7 @@ export function mergeChecks(s: HtmlChecks | null, r: HtmlChecks | null, listingP
     phoneMatchesListing: listingPhone && phones.length ? phones.includes(listingPhone) : null,
     hasLocalSchema: s.hasLocalSchema || r.hasLocalSchema,
     ltdHint: s.ltdHint || r.ltdHint,
+    description: s.description ?? r.description,
   };
 }
 
@@ -130,6 +131,7 @@ export async function auditLead(lead: LeadRow, opts: AuditOpts, deps: AuditDeps 
       audit.builder = h.builder; audit.free_tier_host = b(h.freeTierHost); audit.copyright_year = h.copyrightYear;
       audit.phone_on_page = h.phonesOnPage[0] ?? null; audit.phone_matches_listing = b(h.phoneMatchesListing);
       audit.has_local_schema = b(h.hasLocalSchema); audit.ltd_hint = b(h.ltdHint);
+      audit.site_description = h.description;
     }
 
     if (opts.psi !== false && audit.final_url) {
@@ -181,5 +183,31 @@ export async function auditMany(opts: AuditOpts): Promise<{ audited: number; err
   const chains = markChains();
   if (chains) log.info(`audit: flagged ${chains} more leads as chains by shared phone or domain`);
   if (out.rescued) log.info(`audit: ${out.rescued} sites looked dead to a script but loaded in a real browser, counted as live`);
+  return out;
+}
+
+/** Backfill website descriptions for live sites audited before descriptions existed. One fast fetch per site, no browser, no Lighthouse. */
+export async function backfillDescriptions(opts: { query?: string; force?: boolean } = {}): Promise<{ checked: number; found: number }> {
+  const { getAudit, listLeads, setSiteDescription } = await import('../db/queries.js');
+  const scoring = loadScoring();
+  const leads = listLeads({ query: opts.query }).filter((l) => {
+    const a = getAudit(l.id);
+    return a && a.website_status === 'live' && a.final_url && (opts.force || !a.site_description);
+  });
+  const out = { checked: 0, found: 0 };
+  const limit = pLimit(6);
+  await Promise.all(leads.map((l) => limit(async () => {
+    const a = getAudit(l.id)!;
+    try {
+      const f = await fetchHomepage(a.final_url!);
+      if (f.httpStatus && f.httpStatus < 400 && f.body) {
+        const d = runHtmlChecks(f.body, f.headers, a.final_domain, l.phone_e164, scoring).description;
+        setSiteDescription(l.id, d);
+        if (d) out.found++;
+      }
+    } catch { /* leave empty */ }
+    out.checked++;
+  })));
+  log.info(`describe: ${out.found} of ${out.checked} live sites had a usable description`);
   return out;
 }

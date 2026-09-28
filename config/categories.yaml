@@ -4,41 +4,49 @@
 # must_haves: what the new site needs, used in the pitch pack notes.
 categories:
   - key: plumber
+    search_terms: [heating engineer, boiler repair, gas engineer]
     keywords: [plumber, plumbers, plumbing, heating engineer, gas engineer, boiler]
     pays_for_marketing: true
     sic: ["43220"]
     must_haves: [emergency call-out banner, Gas Safe number if applicable, service areas, boiler and bathroom service pages]
   - key: electrician
+    search_terms: [electrical contractor, EV charger installer]
     keywords: [electrician, electricians, electrical]
     pays_for_marketing: true
     sic: ["43210"]
     must_haves: [NICEIC or NAPIT badge if applicable, EICR and rewire service pages, emergency call-out, service areas]
   - key: roofer
+    search_terms: [roof repair, flat roofing]
     keywords: [roofer, roofers, roofing]
     pays_for_marketing: true
     sic: ["43910"]
     must_haves: [emergency repairs, flat and pitched roof pages, before and after gallery, service areas]
   - key: builder
+    search_terms: [extension builder, loft conversion]
     keywords: [builder, builders, building contractor, extensions, loft conversion]
     pays_for_marketing: true
     sic: ["41202", "43390"]
     must_haves: [project gallery, extensions and conversions pages, quote form, accreditations]
   - key: landscaper
+    search_terms: [garden design, fencing contractor, driveway paving]
     keywords: [landscaper, landscapers, landscaping, landscape gardener, gardener, gardening, fencing, paving]
     pays_for_marketing: true
     sic: ["81300"]
     must_haves: [before and after gallery, patios and fencing pages, seasonal services, quote form]
   - key: cleaner
+    search_terms: [domestic cleaner, end of tenancy cleaning]
     keywords: [cleaner, cleaners, cleaning, end of tenancy, carpet cleaning]
     pays_for_marketing: true
     sic: ["81210", "81220", "81299"]
     must_haves: [domestic and commercial pages, end of tenancy page, instant quote form, insurance and DBS mention]
   - key: garage
+    search_terms: [MOT centre, car servicing]
     keywords: [garage, garages, mot, mechanic, mechanics, car repair, tyres]
     pays_for_marketing: true
     sic: ["45200"]
     must_haves: [MOT booking, services list with prices from, opening hours, map, reviews]
   - key: barber
+    search_terms: [mens hairdresser]
     keywords: [barber, barbers, barbershop]
     pays_for_marketing: false
     walk_in: true
@@ -46,6 +54,7 @@ categories:
     sic: ["96020"]
     must_haves: [price list, booking link, Instagram feed, opening hours, map]
   - key: beauty
+    search_terms: [nail salon, lash technician, hair salon]
     keywords: [beauty, beauty salon, nails, nail salon, lashes, brows, aesthetics, hairdresser, hairdressers, hair salon]
     pays_for_marketing: true
     walk_in: true
@@ -53,6 +62,7 @@ categories:
     sic: ["96020"]
     must_haves: [treatment menu with prices, booking link, Instagram feed, gallery, opening hours]
   - key: cafe
+    search_terms: [coffee shop, brunch cafe]
     keywords: [cafe, cafes, coffee shop, coffee]
     pays_for_marketing: false
     walk_in: true
@@ -60,6 +70,7 @@ categories:
     sic: ["56102"]
     must_haves: [menu, opening hours, map, Instagram feed, photos]
   - key: takeaway
+    search_terms: [pizza takeaway, chinese takeaway]
     keywords: [takeaway, takeaways, fast food, pizza, kebab, chinese, indian, fish and chips]
     pays_for_marketing: false
     walk_in: true
@@ -74,6 +85,7 @@ categories:
     sic: ["56101"]
     must_haves: [menu, booking link, opening hours, gallery, map]
   - key: dentist
+    search_terms: [cosmetic dentist]
     keywords: [dentist, dentists, dental]
     pays_for_marketing: true
     sic: ["86230"]
@@ -84,11 +96,13 @@ categories:
     sic: ["69201", "69202"]
     must_haves: [services for sole traders and limited companies, pricing packages, contact form, credentials]
   - key: physio
+    search_terms: [sports massage]
     keywords: [physio, physiotherapist, physiotherapy, osteopath, chiropractor, sports massage]
     pays_for_marketing: true
     sic: ["86900"]
     must_haves: [conditions treated, booking link, practitioner bios, prices, registration bodies]
   - key: removals
+    search_terms: [man and van]
     keywords: [removals, removal company, man and van, movers]
     pays_for_marketing: true
     sic: ["49420"]
@@ -106,6 +120,7 @@ categories:
     sic: ["96090"]
     must_haves: [price list, booking form, gallery, areas covered]
   - key: personal_trainer
+    search_terms: [personal trainer, PT studio, strength coach]
     keywords: [personal trainer, personal trainers, personal training, gym trainer, gym trainers, fitness coach, fitness coaches, fitness trainer, fitness, gym, gyms, strength and conditioning, bootcamp, boot camp, pilates, yoga]
     pays_for_marketing: true
     dm: true
@@ -123,6 +138,7 @@ categories:
     sic: ["49390"]
     must_haves: [instant quote form, fleet with seat counts, airport and event pages, areas covered, operator licence and insurance mention]
   - key: estate_agent
+    search_terms: [letting agent]
     keywords: [estate agent, estate agents, letting agent, letting agents, lettings, property management, estate agency, real estate]
     pays_for_marketing: true
     sic: ["68310", "68320"]
@@ -139,11 +155,13 @@ categories:
     sic: ["85530"]
     must_haves: [lesson prices and packages, areas covered, pass rate or passes gallery, booking form, manual and automatic]
   - key: decorator
+    search_terms: [plasterer]
     keywords: [painter, painters, decorator, decorators, painter and decorator, painters and decorators, plasterer, plasterers, plastering]
     pays_for_marketing: true
     sic: ["43341", "43310"]
     must_haves: [before and after gallery, interior and exterior pages, free quote form, areas covered]
   - key: fitter
+    search_terms: [kitchen fitter, bathroom fitter, handyman]
     keywords: [kitchen fitter, kitchen fitters, bathroom fitter, bathroom fitters, carpet fitter, carpet fitters, flooring, tiler, tilers, joiner, joiners, carpenter, carpenters, handyman, handymen]
     pays_for_marketing: true
     sic: ["43320", "43330"]

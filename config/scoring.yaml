@@ -48,6 +48,10 @@ viability:
   exclude_rating_under: 3.0       # excluded outright when rating is below this ...
   exclude_rating_min_reviews: 50  # ... across at least this many reviews
   no_phone_cap: 60
+  recent_review_months: 12       # newest of Google's top reviews within this many months: active business
+  recent_reviews: 10
+  stale_review_months: 24        # nothing newer than this: may be winding down
+  stale_reviews: -15
 
 total:
   opportunity_weight: 0.5

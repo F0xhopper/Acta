@@ -7,31 +7,25 @@ const d = (): DatabaseSync => openDb();
 
 // ---------- leads ----------
 
+const LISTING_COLS = ['name', 'address', 'postcode', 'outward_code', 'lat', 'lng', 'phone_e164', 'website_url', 'google_maps_url', 'rating', 'review_count',
+  'business_status', 'primary_type', 'types_json', 'opening_hours_json', 'raw_json', 'type_label', 'editorial_summary', 'reviews_json', 'last_review_at'] as const;
+
 export function upsertLead(input: LeadInput): { id: number; inserted: boolean } {
   const now = isoNow();
-  const existing = d().prepare('SELECT id, slug FROM leads WHERE place_id = ?').get(input.place_id) as { id: number; slug: string } | undefined;
+  const rec = input as unknown as Record<string, unknown>;
+  const val = (c: string) => (rec[c] ?? null) as never;
+  const existing = d().prepare('SELECT id FROM leads WHERE place_id = ?').get(input.place_id) as { id: number } | undefined;
   if (existing) {
-    d().prepare(`UPDATE leads SET name=?, address=?, postcode=?, outward_code=?, lat=?, lng=?, phone_e164=?, website_url=?,
-      google_maps_url=?, rating=?, review_count=?, business_status=?, primary_type=?, types_json=?, opening_hours_json=?,
-      raw_json=?, last_seen_at=? WHERE id=?`).run(
-      input.name, input.address, input.postcode, input.outward_code, input.lat, input.lng, input.phone_e164, input.website_url,
-      input.google_maps_url, input.rating, input.review_count, input.business_status, input.primary_type, input.types_json,
-      input.opening_hours_json, input.raw_json, now, existing.id,
-    );
+    d().prepare(`UPDATE leads SET ${LISTING_COLS.map((c) => `${c}=?`).join(', ')}, last_seen_at=? WHERE id=?`)
+      .run(...LISTING_COLS.map(val), now as never, existing.id as never);
     return { id: existing.id, inserted: false };
   }
-  // Ensure slug uniqueness.
   let slug = input.slug;
   let i = 2;
   while (d().prepare('SELECT 1 FROM leads WHERE slug = ?').get(slug)) slug = `${input.slug}-${i++}`;
-  const res = d().prepare(`INSERT INTO leads (slug, place_id, name, category_key, category_raw, area, source_query, address, postcode,
-    outward_code, lat, lng, phone_e164, website_url, google_maps_url, rating, review_count, business_status, primary_type, types_json,
-    opening_hours_json, raw_json, discovered_at, last_seen_at)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
-    slug, input.place_id, input.name, input.category_key, input.category_raw, input.area, input.source_query, input.address, input.postcode,
-    input.outward_code, input.lat, input.lng, input.phone_e164, input.website_url, input.google_maps_url, input.rating, input.review_count,
-    input.business_status, input.primary_type, input.types_json, input.opening_hours_json, input.raw_json, now, now,
-  );
+  const cols = ['slug', 'place_id', 'category_key', 'category_raw', 'area', 'source_query', ...LISTING_COLS, 'discovered_at', 'last_seen_at'];
+  const values = cols.map((c) => (c === 'slug' ? slug : c === 'discovered_at' || c === 'last_seen_at' ? now : val(c)) as never);
+  const res = d().prepare(`INSERT INTO leads (${cols.join(',')}) VALUES (${cols.map(() => '?').join(',')})`).run(...values);
   const id = Number(res.lastInsertRowid);
   d().prepare('INSERT INTO pipeline (lead_id, status, updated_at) VALUES (?, ?, ?)').run(id, 'new', now);
   return { id, inserted: true };
@@ -72,6 +66,10 @@ export function setChain(id: number, isChain: boolean) {
 
 export function setCategoryForQuery(query: string, categoryKey: string): number {
   return Number(d().prepare('UPDATE leads SET category_key = ? WHERE source_query = ?').run(categoryKey, query).changes);
+}
+
+export function setSiteDescription(leadId: number, description: string | null) {
+  d().prepare('UPDATE audits SET site_description = ? WHERE lead_id = ?').run(description, leadId);
 }
 
 // ---------- audits ----------

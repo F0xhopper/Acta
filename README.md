@@ -42,11 +42,12 @@ One command runs v1 for a plain-English search:
 pnpm pipeline run "plumbers in Erdington"
 ```
 
-1. **Discover.** Google Places Text Search, up to three pages, with a per-run request budget and a seven-day cache. Filters to the target postcode area, drops closed businesses, dedups, flags chains.
+1. **Discover.** Google Places Text Search, up to three pages, with a per-run request budget and a seven-day cache. Also pulls the business type, Google's summary when there is one, and up to five reviews with dates. Filters to the target postcode area, drops closed businesses, dedups, flags chains. `--variants` adds each category's alternative search terms (for plumbers: heating engineer, boiler repair, gas engineer), which surfaces owner-operators the main word misses.
 2. **Audit.** Classifies each website as none, social-only, directory-only, platform-only, down, broken or live. Every site that isn't a dead domain then gets a second opinion in a real phone browser, which also takes the screenshots. That catches three things a plain fetch gets wrong: builders like Wix that add their mobile setup with JavaScript, sites behind bot protection that block scripts but load for people, and Google listings that link to a dead inner page while the homepage works. Live sites get HTML checks on both versions (mobile viewport, builder, free-tier host, copyright year, schema, phone match) and Lighthouse mobile scores via PageSpeed Insights.
 3. **Entity.** Matches each business against Companies House. A high-confidence match means it's a limited company, which is the only case where UK law allows cold email. Everyone else gets phone, walk-in or DM.
-4. **Score.** Opportunity (how much a site would help) and viability (active, reachable, likely to pay), combined into tiers A to X with plain-English reasons.
-5. **Shortlist and packs.** A Markdown table and CSV per run, a pool summary, and a folder per lead with screenshots, Lighthouse JSON and a draft pitch in the right channel.
+4. **Score.** Opportunity (how much a site would help) and viability (active, reachable, likely to pay), combined into tiers A to X with plain-English reasons. A recent review counts as a sign the business is active. No review in two years counts against it.
+5. **Describe.** Each lead gets a short description of what the business does: Google's summary if it has one, otherwise the business's own website description, otherwise its Google type plus the most specific line from a good review. The source is always shown.
+6. **Shortlist and packs.** A Markdown table and CSV per run, a pool summary, and a folder per lead with screenshots, Lighthouse JSON, customer quotes and a draft pitch in the right channel.
 
 ## Setup
 
@@ -75,6 +76,7 @@ Set a billing alert on the Google Cloud project. The request cap should keep you
 pnpm pipeline run "cafes in Moseley"                 # the whole chain for one query
 pnpm pipeline run "plumbers" --areas trades --pages 2  # one trade across an area group from config/areas.yaml
 pnpm pipeline run "barbers" --areas "Bearwood, Harborne"   # or across a list you give it
+pnpm pipeline run "plumbers in Erdington" --variants      # add heating engineer, boiler repair, gas engineer
 pnpm pipeline run --file queries.example.txt         # one query per line
 pnpm pipeline run "barbers in Kings Heath" --dry-run # plan the requests, make none
 
@@ -87,6 +89,7 @@ pnpm pipeline pack <slug> [--reviews]                # --reviews calls Place Det
 pnpm pipeline status <slug> contacted --note "called, texting link"
 pnpm pipeline stats [--query "..."]
 pnpm pipeline leaderboard [--top 50]
+pnpm pipeline describe                                        # fill website descriptions for leads audited before this existed
 pnpm pipeline category --query "..." --set personal_trainer   # fix leads whose search matched no category
 ```
 
@@ -103,7 +106,7 @@ leaderboard.csv         same ranking for a spreadsheet
   leads/<slug>/         notes.md (links, hook, audit, must-haves, draft pitch), screenshots, lighthouse.json
 ```
 
-Every table links the business to Google Maps, the website to the live site, the phone to a tap-to-call link, and each row to its pitch pack. Each lead gets a one-line hook you can say to the owner and a next step in the right channel.
+Every table links the business to Google Maps, shows what the business does, links the website if it has one, the phone to a tap-to-call link, and each row to its pitch pack. Each lead gets a one-line hook you can say to the owner and a next step in the right channel.
 
 The leaderboard refreshes on every `run`, `shortlist` and `status` change, so it's always the current to-do list. `pnpm pipeline leaderboard` regenerates it on demand.
 

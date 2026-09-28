@@ -5,6 +5,8 @@ import { fullLeads } from '../db/queries.js';
 import type { FullLead } from '../db/types.js';
 import { displayUkPhone } from '../util/phone.js';
 import { slugify } from '../util/slug.js';
+import { aboutText, statusLabel, websiteLink } from './format.js';
+import { describeLead } from './describe.js';
 import { card, CHANNEL_LABEL, countBy, csvCell, esc, findPack, hook, link, mapsLink, nextAction, reasonsOf, reviewsText, siteCell, siteUrl, telLink } from './format.js';
 
 const IN_PROGRESS = ['shortlisted', 'building', 'preview_ready', 'contacted', 'followup_1', 'followup_2', 'replied'];
@@ -65,11 +67,11 @@ export function writeLeaderboard(top = 50): { mdPath: string; csvPath: string; r
   }
 
   md.push(`## All ready to pitch${ready.length > top ? ` (top ${top} of ${ready.length})` : ''}`, '',
-    '| # | Tier | Score | Business | Search | Website | Reviews | Channel | Phone | Why | Pack |',
-    '|---|---|---|---|---|---|---|---|---|---|---|');
+    '| # | Tier | Score | Business | About | Search | Website | Status | Reviews | Channel | Phone | Why | Pack |',
+    '|---|---|---|---|---|---|---|---|---|---|---|---|---|');
   shown.forEach((r, i) => {
     const { pack } = packLinks(r);
-    md.push(`| ${i + 1} | ${r.score?.tier} | ${r.score?.total} | ${mapsLink(r)} | ${esc(r.lead.source_query)} | ${siteCell(r)} | ${reviewsText(r)} | ${CHANNEL_LABEL[r.score?.channel ?? ''] ?? ''} | ${telLink(r.lead.phone_e164)} | ${esc(reasonsOf(r, true).slice(0, 2).join('; '))} | ${pack ? link('open', pack) : ''} |`);
+    md.push(`| ${i + 1} | ${r.score?.tier} | ${r.score?.total} | ${mapsLink(r)} | ${esc(aboutText(r, 110))} | ${esc(r.lead.source_query)} | ${websiteLink(r)} | ${statusLabel(r)} | ${reviewsText(r)} | ${CHANNEL_LABEL[r.score?.channel ?? ''] ?? ''} | ${telLink(r.lead.phone_e164)} | ${esc(reasonsOf(r, true).slice(0, 2).join('; '))} | ${pack ? link('open', pack) : ''} |`);
   });
   md.push('');
 
@@ -86,10 +88,10 @@ export function writeLeaderboard(top = 50): { mdPath: string; csvPath: string; r
 
   md.push('## Results', '', `Won ${closed.won ?? 0}${wonNames.length ? ` (${wonNames.map(esc).join(', ')})` : ''} · Lost ${closed.lost ?? 0} · Do not contact ${closed.do_not_contact ?? 0}`, '');
 
-  const header = ['rank', 'tier', 'score', 'name', 'search', 'category', 'area', 'rating', 'reviews', 'website_status', 'channel', 'phone', 'hook', 'why', 'next_step', 'maps_url', 'website_url', 'slug'];
+  const header = ['rank', 'tier', 'score', 'name', 'search', 'category', 'area', 'rating', 'reviews', 'website_status', 'channel', 'phone', 'about', 'latest_review', 'hook', 'why', 'next_step', 'maps_url', 'website_url', 'slug'];
   const csv = [header.join(',')];
   ready.forEach((r, i) => csv.push([i + 1, r.score?.tier, r.score?.total, r.lead.name, r.lead.source_query, r.lead.category_key, r.lead.area, r.lead.rating, r.lead.review_count ?? 0,
-    r.audit?.website_status, r.score?.channel, displayUkPhone(r.lead.phone_e164), hook(r), reasonsOf(r, true).join('; '), nextAction(r), r.lead.google_maps_url, siteUrl(r), r.lead.slug].map(csvCell).join(',')));
+    r.audit?.website_status, r.score?.channel, displayUkPhone(r.lead.phone_e164), describeLead(r).text, r.lead.last_review_at?.slice(0, 10) ?? '', hook(r), reasonsOf(r, true).join('; '), nextAction(r), r.lead.google_maps_url, siteUrl(r), r.lead.slug].map(csvCell).join(',')));
 
   const mdPath = join(OUT_DIR, 'LEADERBOARD.md');
   const csvPath = join(OUT_DIR, 'leaderboard.csv');

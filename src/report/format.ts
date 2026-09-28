@@ -4,6 +4,7 @@ import { OUT_DIR } from '../config.js';
 import type { FullLead } from '../db/types.js';
 import { hostOf } from '../util/http.js';
 import { displayUkPhone } from '../util/phone.js';
+import { describeLead, SOURCE_LABEL } from './describe.js';
 
 export const esc = (v: unknown): string => String(v ?? '').replace(/\|/g, '\\|').replace(/\r?\n/g, ' ').trim();
 
@@ -44,6 +45,28 @@ export function siteCell(r: FullLead): string {
   let host = hostOf(url.startsWith('http') ? url : `http://${url}`) ?? 'site';
   if (host.length > 30) host = `${host.slice(0, 28)}…`;
   return `${label}: ${link(host, url)}`;
+}
+
+/** Clickable website, or "none". */
+export function websiteLink(r: FullLead): string {
+  const url = siteUrl(r);
+  if (!url) return 'none';
+  let host = hostOf(url.startsWith('http') ? url : `http://${url}`) ?? url;
+  if (host.length > 34) host = `${host.slice(0, 32)}…`;
+  return link(host, url.startsWith('http') ? url : `http://${url}`);
+}
+
+export const statusLabel = (r: FullLead) => STATUS_LABEL[r.audit?.website_status ?? 'unaudited'] ?? r.audit?.website_status ?? '';
+
+export function aboutText(r: FullLead, max = 0): string {
+  const d = describeLead(r);
+  const t = max && d.text.length > max ? `${d.text.slice(0, max - 1).replace(/\s+\S*$/, '')}…` : d.text;
+  return `${t} *(${SOURCE_LABEL[d.source]})*`;
+}
+
+export function latestReviewText(r: FullLead): string {
+  if (!r.lead.last_review_at) return 'unknown';
+  return new Date(r.lead.last_review_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
 export function reviewsText(r: FullLead): string {
@@ -130,9 +153,10 @@ export function card(r: FullLead, rank: number, packRel: string | null, shotRel:
     '',
     '| | |',
     '|---|---|',
+    `| About | ${esc(aboutText(r))} |`,
     `| Phone | ${telLink(r.lead.phone_e164)} |`,
-    `| Website | ${siteCell(r)} |`,
-    `| Reviews | ${reviewsText(r)} |`,
+    `| Website | ${websiteLink(r)} · ${statusLabel(r)} |`,
+    `| Reviews | ${reviewsText(r)}, latest ${latestReviewText(r)} |`,
     `| Business type | ${entityText(r)} |`,
     `| Why it ranks | ${esc(reasonsOf(r).join('; '))} |`,
     `| Next step | ${esc(nextAction(r))} |`,

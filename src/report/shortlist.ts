@@ -6,6 +6,8 @@ import type { FullLead } from '../db/types.js';
 import { today } from '../util/dates.js';
 import { displayUkPhone } from '../util/phone.js';
 import { slugify } from '../util/slug.js';
+import { aboutText, latestReviewText, statusLabel, websiteLink } from './format.js';
+import { describeLead } from './describe.js';
 import { card, CHANNEL_LABEL, countBy, csvCell, esc, groupExclusion, hook, link, mapsLink, nextAction, reasonsOf, reviewsText, siteCell, siteUrl, telLink } from './format.js';
 
 export interface ShortlistOpts { query?: string; top?: number; minViability?: number; tiers?: string[]; outDir?: string }
@@ -59,28 +61,28 @@ export function writeShortlist(opts: ShortlistOpts): { rows: FullLead[]; mdPath:
   }
 
   md.push('## Full ranking', '',
-    '| # | Tier | Score | Business | Website | Reviews | Channel | Phone | Why | Pack |',
-    '|---|---|---|---|---|---|---|---|---|---|');
+    '| # | Tier | Score | Business | About | Website | Status | Reviews | Channel | Phone | Why | Pack |',
+    '|---|---|---|---|---|---|---|---|---|---|---|---|');
   rows.forEach((r, i) => {
-    md.push(`| ${i + 1} | ${r.score?.tier} | ${r.score?.total} | ${mapsLink(r)} | ${siteCell(r)} | ${reviewsText(r)} | ${CHANNEL_LABEL[r.score?.channel ?? ''] ?? ''} | ${telLink(r.lead.phone_e164)} | ${esc(reasonsOf(r, true).slice(0, 2).join('; '))} | ${link('open', packRel(r))} |`);
+    md.push(`| ${i + 1} | ${r.score?.tier} | ${r.score?.total} | ${mapsLink(r)} | ${esc(aboutText(r, 110))} | ${websiteLink(r)} | ${statusLabel(r)} | ${reviewsText(r)} | ${CHANNEL_LABEL[r.score?.channel ?? ''] ?? ''} | ${telLink(r.lead.phone_e164)} | ${esc(reasonsOf(r, true).slice(0, 2).join('; '))} | ${link('open', packRel(r))} |`);
   });
-  if (!rows.length) md.push('| | | | Nothing above the floor. Try a neighbouring area or a narrower trade. | | | | | | |');
+  if (!rows.length) md.push('| | | | Nothing above the floor. Try a neighbouring area or a narrower trade. | | | | | | | | |');
 
   if (excluded.length) {
     const groups = countBy(excluded, (r) => groupExclusion(r.score?.excluded_reason ?? null));
     md.push('', '## Excluded', '',
       Object.entries(groups).sort((a, b) => b[1] - a[1]).map(([k, n]) => `${k}: ${n}`).join(' · '), '',
       `<details><summary>All ${excluded.length} excluded leads. Skim for anything that should be in.</summary>`, '',
-      '| Business | Reason | Reviews | Website |', '|---|---|---|---|',
-      ...excluded.map((r) => `| ${mapsLink(r)} | ${esc(r.score?.excluded_reason)} | ${reviewsText(r)} | ${siteCell(r)} |`),
+      '| Business | Reason | Reviews | Website | Status |', '|---|---|---|---|---|',
+      ...excluded.map((r) => `| ${mapsLink(r)} | ${esc(r.score?.excluded_reason)} | ${reviewsText(r)} | ${websiteLink(r)} | ${statusLabel(r)} |`),
       '', '</details>');
   }
 
-  const header = ['rank', 'tier', 'score', 'opportunity', 'viability', 'name', 'category', 'area', 'rating', 'reviews', 'website_status', 'entity', 'channel', 'phone', 'hook', 'why', 'next_step', 'maps_url', 'website_url', 'pack', 'slug'];
+  const header = ['rank', 'tier', 'score', 'opportunity', 'viability', 'name', 'category', 'area', 'rating', 'reviews', 'website_status', 'entity', 'channel', 'phone', 'about', 'latest_review', 'hook', 'why', 'next_step', 'maps_url', 'website_url', 'pack', 'slug'];
   const csv = [header.join(',')];
   rows.forEach((r, i) => csv.push([
     i + 1, r.score?.tier, r.score?.total, r.score?.opportunity, r.score?.viability, r.lead.name, r.lead.category_key, r.lead.area, r.lead.rating, r.lead.review_count ?? 0,
-    r.audit?.website_status, r.ch?.match_confidence === 'high' ? 'ltd' : 'unknown', r.score?.channel, displayUkPhone(r.lead.phone_e164), hook(r),
+    r.audit?.website_status, r.ch?.match_confidence === 'high' ? 'ltd' : 'unknown', r.score?.channel, displayUkPhone(r.lead.phone_e164), describeLead(r).text, r.lead.last_review_at?.slice(0, 10) ?? '', hook(r),
     reasonsOf(r, true).join('; '), nextAction(r), r.lead.google_maps_url, siteUrl(r), packRel(r), r.lead.slug,
   ].map(csvCell).join(',')));
 

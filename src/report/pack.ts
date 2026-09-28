@@ -5,7 +5,8 @@ import type { FullLead } from '../db/types.js';
 import type { PlaceReview } from '../discover/places.js';
 import { displayUkPhone } from '../util/phone.js';
 import { draftPitch } from './pitch.js';
-import { hook, link, nextAction, siteUrl, telLink } from './format.js';
+import { hook, link, nextAction, siteUrl, telLink, websiteLink, latestReviewText } from './format.js';
+import { describeLead, reviewsOf, SOURCE_LABEL } from './describe.js';
 
 const yn = (v: number | null | undefined) => (v === null || v === undefined ? 'unknown' : v ? 'yes' : 'no');
 
@@ -25,6 +26,8 @@ export function writePack(outDir: string, full: FullLead, reviews: PlaceReview[]
 
   const hours: string[] = lead.opening_hours_json ? JSON.parse(lead.opening_hours_json) : [];
   const pitch = draftPitch(full, category);
+  const about = describeLead(full);
+  const listingReviews = reviewsOf(full);
   const mustHaves = [
     'Click-to-call and WhatsApp buttons above the fold on mobile',
     'Google rating and review count near the top',
@@ -43,6 +46,12 @@ ${[link('Google Maps', lead.google_maps_url), siteUrl(full) ? link('Current webs
 > ${hook(full)}
 
 **Next step:** ${nextAction(full)}
+
+## About
+
+${about.text}
+
+*Source: ${SOURCE_LABEL[about.source]}.* Type on Google: ${lead.type_label ?? lead.category_raw}. Website: ${websiteLink(full)}. Latest review: ${latestReviewText(full)}.
 
 ## Listing
 
@@ -79,7 +88,7 @@ ${reasons.map((r) => `- ${r}`).join('\n') || '- (not scored)'}
 
 ${mustHaves.map((m) => `- [ ] ${m}`).join('\n')}
 
-${reviews.length ? `## Review snippets for copy\n\n${reviews.slice(0, 6).map((r) => `> ${r.rating ?? ''}★ ${(r.text?.text ?? '').replace(/\s+/g, ' ').slice(0, 300)} — ${r.authorAttribution?.displayName ?? 'Google user'}, ${r.relativePublishTimeDescription ?? ''}`).join('\n\n')}\n` : ''}
+${reviews.length ? `## Review snippets for copy\n\n${reviews.slice(0, 6).map((r) => `> ${r.rating ?? ''}★ ${(r.text?.text ?? '').replace(/\s+/g, ' ').slice(0, 300)} — ${r.authorAttribution?.displayName ?? 'Google user'}, ${r.relativePublishTimeDescription ?? ''}`).join('\n\n')}\n` : listingReviews.length ? `## What customers say\n\nUse these for the site's copy and testimonials. Quote with first name only.\n\n${listingReviews.map((r) => `> ${r.rating ?? ''}★ ${r.text.slice(0, 300)} — ${r.author ?? 'Google user'}, ${r.when ?? ''}`).join('\n\n')}\n` : ''}
 ## Outreach
 
 Recommended channel: **${pitch.channel}**${category?.dm && pitch.channel !== 'dm' ? ' (Instagram DM as a follow-up)' : ''}

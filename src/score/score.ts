@@ -78,6 +78,12 @@ export function scoreLead(full: FullLead, scoring: Scoring = loadScoring(), cate
   if (rc > 0 && lead.rating !== null) reasons.push(`${rc} reviews at ${lead.rating}`);
   else reasons.push('No reviews yet');
   if (lead.opening_hours_json) viability += v.hours_listed;
+  if (lead.last_review_at) {
+    const months = (Date.now() - new Date(lead.last_review_at).getTime()) / (30.44 * 86_400_000);
+    const when = new Date(lead.last_review_at).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' });
+    if (months <= v.recent_review_months) { viability += v.recent_reviews; reasons.push(`Active, latest review ${when}`); }
+    else if (months >= v.stale_review_months) { viability += v.stale_reviews; reasons.push(`No recent reviews since ${when}, may be winding down`); }
+  }
   if (category?.pays_for_marketing) viability += v.pays_for_marketing;
   if (ch?.match_confidence === 'high') { viability += v.ltd_high; reasons.push('Limited company, cold email allowed'); }
   else reasons.push('Entity unknown, treat as sole trader (no cold email)');

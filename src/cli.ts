@@ -6,7 +6,7 @@ import { discover } from './discover/index.js';
 import { enrichEntities } from './discover/entity.js';
 import { BudgetExceeded, placeReviews, type Budget, type PlaceReview } from './discover/places.js';
 import { expandAreas } from './discover/areas.js';
-import { auditMany } from './audit/index.js';
+import { auditMany, backfillDescriptions } from './audit/index.js';
 import { scoreAll } from './score/score.js';
 import { writeShortlist, runOutDir } from './report/shortlist.js';
 import { writePack } from './report/pack.js';
@@ -38,8 +38,9 @@ program.command('discover').argument('<query>', 'e.g. "plumbers in Erdington"')
   .option('--pages <n>', 'pages of 20 results, max 3', '3')
   .option('--dry-run', 'print planned requests, make none')
   .option('--any-postcode', 'keep results outside B postcodes')
+  .option('--variants', "also search the category's alternative terms (e.g. heating engineer, boiler repair)")
   .action(async (query: string, o) => {
-    const r = await discover(query, { pages: Number(o.pages), dryRun: o.dryRun, anyPostcode: o.anyPostcode, budget: budget() });
+    const r = await discover(query, { pages: Number(o.pages), dryRun: o.dryRun, anyPostcode: o.anyPostcode, budget: budget(), variants: o.variants });
     console.log(JSON.stringify({ query: r.parsed.raw, textQuery: r.parsed.textQuery, category: r.parsed.categoryKey, area: r.parsed.area, found: r.found, inserted: r.inserted, updated: r.updated, skipped: r.skipped, chains: r.chains }, null, 2));
   });
 
@@ -100,12 +101,17 @@ program.command('category').description('Set the category for every lead from a 
     console.log(`${n} leads set to ${o.set}. Now run: pipeline score --query "${o.query}"`);
   });
 
+program.command('describe').description('Fill in website descriptions for live sites audited before descriptions existed')
+  .option('--query <q>').option('--force', 'refetch even if a description exists')
+  .action(async (o) => { console.log(JSON.stringify(await backfillDescriptions({ query: o.query, force: o.force }))); });
+
 program.command('stats').option('--query <q>').action((o) => { console.log(summaryText(o.query)); });
 
 program.command('run').description('discover + audit + entity + score + shortlist + pack for one query or a file of queries')
   .argument('[query]').option('--file <path>', 'one query per line')
   .option('--top <n>', 'max shortlist rows', '25').option('--pages <n>', 'pages of 20 results, max 3', '3').option('--min-viability <n>').option('--tiers <list>')
   .option('--areas <group|list>', 'fan the trade across an area group from config/areas.yaml, or a comma list')
+  .option('--variants', "also search the category's alternative terms in each area")
   .option('--no-psi').option('--no-screenshots').option('--reviews').option('--any-postcode').option('--dry-run')
   .action(async (query: string | undefined, o) => {
     let queries = o.file ? readFileSync(o.file, 'utf8').split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('#')) : query ? [query] : [];
@@ -118,7 +124,7 @@ program.command('run').description('discover + audit + entity + score + shortlis
       log.info(`=== run ${runId}: ${q} ===`);
       let d;
       try {
-        d = await discover(q, { pages: Number(o.pages), dryRun: o.dryRun, anyPostcode: o.anyPostcode, runId, budget: b });
+        d = await discover(q, { pages: Number(o.pages), dryRun: o.dryRun, anyPostcode: o.anyPostcode, runId, budget: b, variants: o.variants });
       } catch (e) {
         if (e instanceof BudgetExceeded) { log.warn(`${e.message} Stopping before "${q}". Cached searches rerun free.`); finishRun(runId); break; }
         throw e;
