@@ -176,6 +176,8 @@ Six phases. Each writes its artefact to `acta/` so the reasoning is visible.
 
 ## 8. The orchestrator: `acta build`
 
+The full engineering design, with every command, the state machine, testing and security, is in [BUILD-PIPELINE.md](BUILD-PIPELINE.md).
+
 ```
 pnpm pipeline pick <slug> [<slug> ...]
 pnpm pipeline gather <slug>                      # brand and facts only, useful to inspect before a build
