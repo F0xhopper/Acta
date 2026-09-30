@@ -201,7 +201,7 @@ An agent runs a general process per lead. The process is fixed, the output is be
 
 **Phase 3, content.** Written end to end from the listing, reviews, the brief and the competitor copy patterns. Facts are locked: name, phone, address, hours, rating and review quotes come from the listing verbatim. A claims check blocks anything not evidenced in the listing or reviews.
 
-**Phase 4, build.** A new git repo per site, stamped from the `acta-site-starter` template, composing and adapting the starter's blocks and writing bespoke sections where the brief calls for them. Plumbing that must stay consistent comes from the `@acta/kit` package. The kit is the floor, not the ceiling. Stock imagery from the licensed library, text logo, Open Graph image, LocalBusiness schema, sitemap and robots come with the starter.
+**Phase 4, build.** A new git repo per site, stamped from the `acta-site-starter` template, which holds infrastructure only. The agent designs every site from a blank page around the business's own logo, colours and photos, gathered beforehand. Plumbing that must stay consistent comes from the `@acta/kit` package. Nothing visual is shared between sites. The kit is the floor, not the ceiling. Stock imagery from the licensed library, text logo, Open Graph image, LocalBusiness schema, sitemap and robots come with the starter.
 
 **Phase 5, QA loop.** Lighthouse mobile and Playwright screenshots at phone, tablet and desktop. The agent compares its screenshots against the brief's references and its own gates, fixes, and repeats up to three times. Gates: performance 90 or above, SEO 95 or above, no broken links, alt text on every image, call and WhatsApp links resolve, name and address and phone match the listing exactly.
 
@@ -287,8 +287,8 @@ Pipeline statuses: `new`, `shortlisted`, `building`, `preview_ready`, `contacted
 | Lighthouse | PageSpeed Insights API | Free, no local Chrome needed for scores |
 | Screenshots | Playwright | |
 | Config | YAML + `zod` | |
-| Site builds | Claude Code `/build` skill, Next.js and Tailwind starter, shared `packages/kit`, one Vercel project per site | Phase 1 |
-| Design research | Claude in Chrome for Pinterest and galleries at human pace, web fetch for competitor sites, cached per vertical | Phase 1 |
+| Site builds | Claude Code `/build` skill, infrastructure-only starter, `@acta/kit` plumbing, one repo and one Vercel project per site, every design from scratch | Phase 1 |
+| Brand and research | Gather script for logo, colours, fonts, photos and facts; Playwright with a saved session for Pinterest per lead; galleries and competitors fetched headlessly | Phase 1 |
 | Local QA | Lighthouse CLI and Playwright, run by the agent in the QA loop | Phase 1 |
 | Email sending | Resend or Postmark on a dedicated sending domain | Phase 2 |
 | Payments | Stripe payment links and subscriptions | Phase 3 |

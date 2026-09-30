@@ -1,6 +1,8 @@
 # Phase one: building the sites
 
-The plan for turning a shortlisted lead into a reviewed, live preview site with one command. Each site is its own git repo, built by a Claude Code agent following a fixed process with a bespoke result, and checked by scripts the agent cannot skip.
+Turning a shortlisted lead into a reviewed, live preview with one command. Every site is its own git repo and its own design. Nothing visual is shared between sites. What is shared is the plumbing, the rules and the checks.
+
+The site is built around the business's own brand: their logo, their colours, their photos, every fact that can be found about them, and a design direction researched on Pinterest for that specific business.
 
 Companion to [PIPELINE.md](PIPELINE.md) (the whole design) and [PLAYBOOK.md](PLAYBOOK.md) (the manual version this replaces).
 
@@ -11,240 +13,236 @@ Companion to [PIPELINE.md](PIPELINE.md) (the whole design) and [PLAYBOOK.md](PLA
 ```
  leaderboard ──► pick ──► acta build <slug>
                             │
-                            ├─ 1. create repo from the starter template, drop in the lead's facts
+                            ├─ 0. gather: everything findable about the business (script, not agent)
+                            ├─ 1. stamp a repo from the starter (infrastructure only, no UI)
                             ├─ 2. run the /build skill headlessly in that repo
-                            │      research ─► brief ─► content ─► build ─► QA loop
-                            ├─ 3. gates (scripts, not the agent): Lighthouse, links, alt, facts, claims
-                            ├─ 4. deploy to its own Vercel project, alias to <slug>.preview.acta.agency, noindex
+                            │      research (Pinterest, galleries, competitors, for this lead)
+                            │      ─► brief + theme (their brand, extended)
+                            │      ─► content (every fact with its source)
+                            │      ─► design and build from a blank page
+                            │      ─► QA loop with a critic
+                            ├─ 3. gates (scripts): speed, links, facts, claims, contrast, brand, uniqueness
+                            ├─ 4. deploy to its own Vercel project, <slug>.preview.acta.agency, noindex
                             ├─ 5. evidence: their site vs the new one on a phone, with scores
-                            └─ 6. status: preview_ready, pitch pack updated with the link and the picture
+                            └─ 6. status preview_ready, pitch pack updated
                                         │
-                              you review on your phone (two minutes)
+                              you review on your phone (two minutes: is it them, is it good)
                                         │
                               approve ─► outreach (phase two)   ·   send back with a note ─► /revise
 ```
 
-Three repos are involved:
+| Repo | What it is |
+|---|---|
+| `Acta` (this one) | The pipeline. Finds leads, gathers the brand, orchestrates builds, tracks status. |
+| `acta-site-starter` | GitHub template every site starts from. Infrastructure only: Next.js, Tailwind with an empty token file, `CLAUDE.md`, skills, subagents, gate scripts, deploy config. No components, no layouts, no colours. |
+| `acta-kit` | npm package of plumbing the agent never edits: schema, contact form handling, image pipeline, sitemap, preview noindex, unstyled accessibility primitives (skip link, focus ring, form field wiring). |
+| `site-<slug>` | One repo per site. Owned by the agent during the build, by the customer after. |
 
-| Repo | What it is | Changes how often |
-|---|---|---|
-| `Acta` (this one) | The pipeline. Finds leads, orchestrates builds, tracks status. | Weekly |
-| `acta-site-starter` | GitHub template every site starts from: Next.js, Tailwind, the block library, `CLAUDE.md`, the skills, the gate scripts. | Every ten builds, after the retro |
-| `acta-kit` | npm package of the plumbing that must stay consistent and that the agent never edits: SEO helpers, LocalBusiness schema, contact form handling, image pipeline, analytics, preview noindex. | Rarely |
-| `site-<slug>` (one per lead) | The site. Created from the starter, owned by the agent, then by the customer. | Built once, then edits on request |
-
-Why per-site repos and not a monorepo: a customer can be handed their repo, a bespoke site can diverge as far as it likes, a broken build can't touch any other site, and Vercel's one-project-per-repo model just works. What it costs: fixes don't propagate by themselves. The kit package solves that for plumbing, and a `/kit-sync` skill offers upstream block changes to sites that haven't modified them.
+Why per-site repos: a customer can be handed theirs, a site can diverge as far as it likes, a broken build can't touch another site, and Vercel's one-project-per-repo model just works.
 
 ---
 
-## 2. The starter template
+## 2. Gather: everything findable about the business
 
-`acta-site-starter` is a GitHub template repo. `gh repo create --template` stamps a fresh copy in seconds.
+This runs before the agent, as deterministic code in the pipeline, and writes `acta/brand.json` and `acta/facts.json` into the new repo. It is the difference between a site that looks like theirs and a site that looks like anyone's.
+
+### Sources, in order of trust
+
+| Source | What we take | How |
+|---|---|---|
+| **Google listing** | name, phone, address, hours, rating, up to five dated reviews, type, attributes (wheelchair access, parking, card payments, kids, dogs), and up to ten photos, almost always uploaded by the owner | Places API. Already fetched for search; photos need one Place Details call per lead |
+| **Their existing website**, when there is one | logo, brand colours, fonts, their own photos, services, about text, accreditations, years established, team names, social links, email | Playwright crawl of the homepage plus up to eight linked pages (about, services, contact, gallery) |
+| **Companies House** | registered name, incorporation year, status | Already matched |
+| **Facebook and Instagram** | profile picture (often the cleanest logo), bio, most recent post images | Links come from the site or the listing. Fetching needs a logged-in session, see section 4. Optional |
+| **Street** | a Street View image of the premises for shops and salons | Street View Static API, display only |
+
+### Brand extraction
+
+- **Logo.** Candidates in priority order: the header or nav image, `apple-touch-icon`, `mask-icon`, `og:image` when it isn't a photo, the favicon, the social profile picture. Rejected: anything whose filename, alt or nearby text matches an accreditation or supplier badge (Gas Safe, Checkatrade, Worcester, Vaillant, NICEIC, Visa, Mastercard, Facebook, Google). The chosen file is trimmed, the background made transparent when it's a flat colour, and kept at its native resolution. SVG is kept as SVG. A raster under 200 px wide is flagged as low quality, which becomes an upsell line in the pitch: "I can redraw your logo properly".
+- **Colours.** From three places, agreed by vote: CSS custom properties and the computed background and text colours of the header, buttons and links; the dominant colours of the logo; the dominant colours of their photos. Output is a primary, a secondary, an accent and a neutral, each with a hex and a note on where it came from. The designer extends these into a full scale in the brief.
+- **Fonts.** Computed `font-family` of headings and body, and any Google Fonts link. If the face is a Google Font it's used. If it's a system face or a Wix-only face, the designer picks the nearest Google Font and says so.
+- **Photos.** Every image on their site over 600 px wide that isn't a logo, icon or badge, plus the Google photos. Each is recorded with its source and its dimensions. The agent picks; the critic checks that at least the hero and one section use their real photos when any exist.
+- **Tone.** Not extracted, inferred by the designer from the copy and the reviews: what customers praise, how the business talks about itself.
+
+### Facts with evidence
+
+`acta/facts.json` holds every claim we can make, each with a source and a quote:
+
+```json
+{ "claim": "Gas Safe registered", "source": "website", "url": "https://.../about", "quote": "We are Gas Safe registered (No. 512345)" }
+{ "claim": "established 2011", "source": "companies_house", "quote": "Incorporated 14 March 2011" }
+{ "claim": "same-day call-outs", "source": "review", "quote": "came out the same day", "author": "Dawn" }
+```
+
+The copywriter may only state what is in this file. The claims gate checks the built HTML against it. A business with no website and no accreditations gets a site that says less, and that's correct.
+
+### Rights, in one paragraph
+
+Previews are private, noindex, and shown only to the business they depict. Using their own logo and photos in a mock-up made for them is the point of the exercise, and if they say no, the repo and the deployment are deleted the same day. Google photos are displayed with attribution and are not kept past the preview, per Google's terms. When they say yes, they send their own files and the preview becomes their site.
+
+**What no business has:** a site with no logo gets a wordmark set in the brief's typeface, and no photos gets licensed stock matched to the palette. Both are said plainly in the pitch, because both are upsells.
+
+---
+
+## 3. The starter: infrastructure only
 
 ```
 acta-site-starter/
-  CLAUDE.md                  what the agent needs to know: stack, conventions, the rules, how to run checks
+  CLAUDE.md                  the rules and how to run checks. No design guidance beyond "unique, theirs, fast"
   .claude/
-    settings.json            permissions and hooks (see section 6)
-    skills/
-      build/SKILL.md         the six-phase process
-      revise/SKILL.md        act on a reviewer note, re-run gates, redeploy
-      research/SKILL.md      refresh a vertical's inspiration board (interactive, uses Chrome)
-      kit-sync/SKILL.md      pull upstream block changes the site hasn't touched
-    agents/
-      designer.md            turns research into the brief
-      copywriter.md          writes the content, runs the claims check on itself
-      critic.md              compares screenshots to the brief and lists concrete fixes
+    settings.json            permissions and hooks (section 6)
+    skills/                  build, revise, research, kit-sync
+    agents/                  designer, copywriter, critic
   acta/
-    lead.json                filled by the pipeline: listing, audit, reviews, description, must-haves, competitors
-    brief.md                 written by the agent in phase two
-    content.md               phase three
-    research/                screenshots and notes gathered for this lead
-    qa/                      gate reports, screenshots, evidence composite
-    build-log.md             the agent's decisions, for the retro
+    brand.json facts.json    written by gather
+    research/                pins, references, competitor notes, for this lead
+    brief.md theme.md        the design decisions
+    content.md               the copy
+    qa/                      gate reports, screenshots, evidence
+    build-log.md             what the agent chose and why
   src/
-    app/                     Next.js App Router: home, one route per service, one per area, contact
-    blocks/                  the visual building blocks the agent composes and adapts (owned by the site)
-    content/                 site.ts: every fact and every line of copy, typed. Nothing hard-coded in components.
-    lib/                     thin wrappers over @acta/kit
-  public/images/             the licensed stock set chosen for this site
-  scripts/
-    gate.ts                  runs every check, writes acta/qa/gate.json, exits non-zero on failure
-    shots.ts                 Playwright screenshots at phone, tablet, desktop
-    evidence.ts              before/after composite with Lighthouse scores
-  vercel.ts                  noindex header and robots disallow while ACTA_PREVIEW=1
+    app/                     empty App Router shell: layout.tsx with fonts and metadata wired, nothing else
+    theme.ts                 empty token file the designer fills: colours, type scale, spacing, radii
+    content/site.ts          typed facts and copy, generated from facts.json and content.md
+    components/              empty. The agent writes everything here
+  public/brand/              logo and photos placed by gather
+  scripts/                   gate.ts, shots.ts, evidence.ts, similarity.ts
+  vercel.ts                  noindex header and robots disallow when ACTA_PREVIEW=1
 ```
 
-**Blocks, not templates.** `src/blocks/` holds around thirty pieces: four hero variants, service grid, service detail, area section, review carousel, trust strip, gallery, opening hours, map, contact form, sticky call bar, FAQ, pricing table, team, footer. Each is a plain component with props, styled with tokens from `src/theme.ts`. The agent composes them, changes them, or writes new ones. The starter is the floor, not the ceiling.
-
-**Facts live in one file.** `src/content/site.ts` is generated from `acta/lead.json` and holds name, phone, address, hours, rating, reviews, services, areas. Components read from it. The claims gate diffs the built HTML against it, so a component cannot invent a phone number or a "Gas Safe registered" the lead doesn't have.
-
-**Images.** A curated, licensed library lives in `acta-kit/assets/<vertical>/`, tagged. Unsplash and Pexels licences allow commercial use. The agent picks a set for the brief. Their own photos come after they pay. Logo is text, in the brief's typeface.
+There is deliberately no component library, no hero variant, no section catalogue. The agent starts from `theme.ts` and a blank `components/` folder every time. The kit gives it unstyled primitives for the fiddly accessible bits so it can't get those wrong, and nothing that looks like anything.
 
 ---
 
-## 3. The `/build` skill: six phases
+## 4. Research for this lead, including Pinterest
 
-The skill is prose the agent follows. Each phase writes its artefact into `acta/` so you can see why it did what it did.
+Per lead, not per vertical. The queries come from the brand, so a navy plumber and a neon barber get different boards.
 
-### Phase one: research
+1. **Pinterest.** Three to four searches built from the category, the palette and the mood, for example "plumber website design navy", "trades website hero photo dark", "modern barbershop landing page", "dark moody barber branding". Six to eight pins each, scrolled at human pace, screenshot with a one-line note: what the layout idea is, what the typography does, why it suits this business. Twenty minutes of browser time per lead.
+2. **Galleries.** Five references from Land-book, Godly, SiteInspire and Minimal Gallery, fetched without login, filtered to the mood.
+3. **Competitors.** The five best same-category sites in Birmingham from the leads database, to be different from, not to copy.
+4. **Their current site**, if any, for what to keep (a colour customers know, a phrase they use) and what to drop.
 
-Three sources, in this order, all saved to `acta/research/`.
+**How Pinterest runs headlessly.** Pinterest has no public API and shows logged-out visitors a few pins and a login wall. The plan is a Playwright browser with a saved Pinterest session: you log in once in a visible browser, the session is stored locally, and headless builds reuse it, scrolling at human pace. If the session has expired the build falls back to the last board saved for that category and flags it in the build log, so a batch never dies on a login wall. Refresh the session monthly. For an interactive build, the Claude in Chrome extension in your own browser does the same job.
 
-1. **The vertical's inspiration board.** `research/<category>/` in this repo, refreshed by you monthly with the interactive `/research` skill (see section 4). Contains ten to twenty Pinterest pins as screenshots with one-line notes, five gallery references, and a palette and type direction. The agent reads it, it does not rebuild it.
-2. **Local competitors with good sites.** From the leads database: the five same-category businesses in Birmingham whose audit came back live with Lighthouse over 80 and viability over 60. Fetched with Playwright, no login needed. The agent notes sections, tone, calls to action, what they do well, what they get wrong.
-3. **The lead itself.** Reviews (what customers praise), the description, the audit (what's broken on their current site, if any), their current site's screenshots.
-
-### Phase two: brief
-
-The `designer` subagent writes `acta/brief.md`: layout direction, palette from the theme tokens, type pairing, imagery style and the chosen image set, section list in order, tone of voice, the three references that fit this business best, and an avoid list. This is the document you'd give a freelancer. It is also the yardstick the critic uses in phase five.
-
-### Phase three: content
-
-The `copywriter` subagent writes `acta/content.md` and then `src/content/site.ts`. Every service gets a page. Every named area gets a page. The copy uses what reviewers actually praise. Facts come from `lead.json` only. The copywriter runs the claims check on its own output before handing over.
-
-### Phase four: build
-
-The agent composes the site from blocks, adapts them to the brief, and writes bespoke sections where the brief calls for them. It runs `pnpm typecheck`, `pnpm build` and `pnpm shots` as it goes.
-
-### Phase five: QA loop
-
-Up to three rounds. The `critic` subagent looks at the three screenshots next to the brief's references and lists concrete fixes, not opinions: "hero text is unreadable on the photo at 390px", "call button is below the fold on mobile", "section order doesn't match the brief". The agent fixes and re-shoots. Then `pnpm gate` runs. If a gate fails, one more round, then stop and report.
-
-### Phase six: hand over
-
-The agent writes `acta/build-log.md` (what it chose and why, what it couldn't resolve), commits, and exits with a structured result. It does not deploy. The pipeline does.
+**What inspiration means.** Layout, hierarchy, palette, mood, section ideas, typographic voice. Never copy, images or brand assets from any reference. `CLAUDE.md` says so, the originality gate checks the text, and the critic checks the rest.
 
 ---
 
-## 4. Pinterest and inspiration, honestly
+## 5. The `/build` skill
 
-Pinterest has no public search API, and the Claude in Chrome extension needs your logged-in browser open. So per-lead Pinterest research in a headless build isn't possible, and wouldn't be worth it anyway. Ten leads in the same vertical want the same board.
+Six phases. Each writes its artefact to `acta/` so the reasoning is visible.
 
-The plan: **inspiration is gathered per vertical, interactively, once a month.** You run `/research barber` in a Claude Code session with Chrome connected. The skill searches Pinterest for the vertical ("barber website design", "barbershop landing page", "dark moody barber branding"), scrolls at human pace, screenshots ten to twenty pins, notes what recurs, then pulls five references from Land-book, Godly and SiteInspire, and writes `research/barber/board.md` with a palette and type direction. Twenty minutes per vertical. The headless build reads the board and never touches Pinterest.
-
-References from galleries and competitor sites can be fetched headlessly, so those refresh per lead.
-
-**What inspiration means here:** layout, hierarchy, palette, mood, section ideas. Never copy, images or brand assets. The `CLAUDE.md` says so and the gates can't catch it, so the critic checks for it explicitly.
+1. **Research.** As above. Output `acta/research/board.md` with the pins, references and competitor notes, each with a line on relevance.
+2. **Brief and theme.** The `designer` subagent writes `brief.md`: a layout concept in words, section by section, with intent ("hero: full-bleed photo of the shop front, wordmark bottom left, one line, call button"), the imagery plan (which of their photos where, what stock fills the gaps), tone of voice, motion notes, an avoid list, and the three references that matter most. It also fills `theme.ts`: the extracted palette extended to a full scale with contrast checked, the type pairing, spacing and radius decisions. The brief must name what makes this site unlike the last five built, and the critic holds it to that.
+3. **Content.** The `copywriter` writes `content.md` from `facts.json`, the reviews and the brief's tone. A page per service, a page per area served, about, contact. Every claim traceable. It runs the claims check on itself.
+4. **Design and build.** The agent writes the components for this site. No catalogue to reach for, so it builds what the brief describes. It runs typecheck, build and screenshots as it goes.
+5. **QA loop.** Up to three rounds. The `critic` looks at phone, tablet and desktop screenshots beside the brief's references and the brand, and lists concrete fixes: readability, hierarchy, whether it actually uses their colours and logo, whether the hero uses their photo, whether it looks like the last site. Then `pnpm gate`.
+6. **Hand over.** `build-log.md`, commit, structured exit. The pipeline deploys, never the agent.
 
 ---
 
-## 5. Gates: what the agent cannot skip
+## 6. Gates the agent cannot skip
 
-`scripts/gate.ts` runs on the production build and writes `acta/qa/gate.json`. A Stop hook in the starter runs it whenever the agent tries to finish, and blocks the finish if it fails. The pipeline reads the JSON too, so a site never deploys on the agent's say-so.
+`scripts/gate.ts` runs on the production build and writes `acta/qa/gate.json`. A Stop hook runs it whenever the agent tries to finish and blocks on failure. The pipeline reads the file itself before deploying.
 
 | Gate | Pass condition |
 |---|---|
-| Lighthouse mobile | performance 90 or above, SEO 95 or above, accessibility 90 or above |
-| Links | every internal link resolves, every external link returns under 400 |
-| Images | every image has alt text, none over 300 KB, hero under 150 KB |
-| Facts | name, phone, address, hours in the HTML match `lead.json` exactly |
-| Claims | no phrase from the claims list (Gas Safe, NICEIC, "years experience", "award-winning", "fully insured", "DBS checked") unless it appears in `lead.json` evidence |
+| Speed | Lighthouse mobile: performance 90+, SEO 95+, accessibility 90+ |
+| Links | every internal link resolves, every external link answers under 400 |
+| Images | alt text on all, none over 300 KB, hero under 150 KB, at least one of their own photos used when any exist |
+| Facts | name, phone, address, hours in the HTML match the listing exactly |
+| Claims | every claim phrase in the HTML appears in `facts.json` |
+| Brand | logo file present in the header, primary colour used on at least one interactive element, theme fonts loaded |
+| Contrast | every text and background pair in `theme.ts` passes WCAG AA |
+| Uniqueness | perceptual hash of the mobile hero and the full mobile page differ from every other site Acta has built by more than a threshold. No two Acta sites look alike |
+| Originality | no run of twelve or more words shared with any page fetched in research |
 | Reach | `tel:` and WhatsApp links present, contact form posts, sitemap and robots correct |
 | Preview | noindex header present when `ACTA_PREVIEW=1` |
-| Originality | no run of twelve or more words shared with any competitor page fetched in research |
 
 ---
 
-## 6. Claude Code, done properly
+## 7. Claude Code, done properly
 
-- **`CLAUDE.md` in the starter** carries the rules the agent must never break: facts from `lead.json` only, no copying, no invented claims, licensed images only, run the gates, keep every line of copy in `site.ts`. Short, specific, tested by reading it as if you were new.
-- **Skills** hold process, not rules. They can be long. The build skill is written after the first five sites are built by hand with the agent, distilled from the notes of what you had to correct. Not before.
-- **Subagents** (`designer`, `copywriter`, `critic`) keep the brief, the copy and the criticism honest by separating the roles. Each has its own tools and model setting in its frontmatter. The critic gets a cheaper, faster model. The designer gets the strongest one.
-- **Hooks** in `.claude/settings.json`: a Stop hook that runs the gates and refuses to let the agent finish on a failure, and a PostToolUse hook on file writes that runs typecheck so errors surface immediately.
-- **Permissions** in the same file: allow `pnpm`, `node scripts/*`, `git add` and `git commit`, deny `git push`, `rm -rf`, and any network call outside the research allowlist. Headless runs add `--allowedTools` to match.
-- **Headless invocation** from the pipeline:
-
-  ```
-  claude -p "/build" --output-format json --max-turns 150
-  ```
-
-  The JSON result carries the exit status, turn count and the agent's final report. The pipeline stores it against the build. A wall-clock cap of an hour kills anything runaway.
-- **Retro every ten builds.** Read the ten `build-log.md` files. Anything the agent wrote bespoke three or more times becomes a starter block. Anything you corrected twice becomes a line in `CLAUDE.md` or the skill. The skill-creator skill can run evals of the build skill against saved logs when it's worth the effort.
+- **`CLAUDE.md`** carries rules, not taste: facts from `facts.json` only, brand from `brand.json`, no copying, licensed or their own images only, run the gates, every line of copy in `site.ts`, write the build log. Short, tested by reading it cold.
+- **Skills** carry process and can be long. The build skill is written after the first five sites are built by hand with the agent, from the notes of what you corrected. Not before.
+- **Subagents** separate the roles: `designer` (strongest model, the brief and theme), `copywriter` (strong model, the copy and its own claims check), `critic` (fast model, screenshots against the brief, concrete fixes only). Each has its own tools and model in its frontmatter.
+- **Hooks**: a Stop hook that runs the gates and refuses to let the agent finish on a failure; a PostToolUse hook on file writes that runs typecheck.
+- **Permissions**: allow `pnpm`, `node scripts/*`, `git add`, `git commit`; deny `git push`, `rm -rf`, and network outside the research allowlist. Headless runs pass `--allowedTools` to match.
+- **Headless**: `claude -p "/build" --output-format json --max-turns 200`, a wall-clock cap of ninety minutes, the JSON result stored against the build.
+- **Retro every ten builds.** Read the build logs. Every correction you made twice becomes a rule. Every gate that never fires gets loosened. Nothing visual gets promoted into the starter, on purpose. What gets promoted is process: a better brief template, a sharper critic checklist, a new gather source.
 
 ---
 
-## 7. The orchestrator: `acta build`
-
-New commands in this repo.
+## 8. The orchestrator: `acta build`
 
 ```
-pnpm pipeline pick <slug> [<slug> ...]          # mark for building
-pnpm pipeline build --picked [--max 5]           # build everything marked, in order of score
-pnpm pipeline build <slug>                       # one lead
-pnpm pipeline review                             # queue of preview_ready sites with links and the evidence image
-pnpm pipeline approve <slug>                     # ready for outreach
-pnpm pipeline reject <slug> --note "..."         # sends the note to /revise, rebuilds, back to review
+pnpm pipeline pick <slug> [<slug> ...]
+pnpm pipeline gather <slug>                      # brand and facts only, useful to inspect before a build
+pnpm pipeline build --picked [--max 5]
+pnpm pipeline build <slug>
+pnpm pipeline review                             # queue: preview link, evidence image, logo and palette as found
+pnpm pipeline approve <slug>
+pnpm pipeline reject <slug> --note "..."         # goes to /revise, rebuilds, back to review
 ```
 
-What `build` does for one lead:
+For one lead: gather → `gh repo create F0xhopper/site-<slug> --template F0xhopper/acta-site-starter --private --clone` → write `acta/*.json` and `public/brand/*` → headless build with caps, status `building` → read `gate.json`, on failure `build_failed` with the reason → `vercel link`, `vercel deploy --prod` with `ACTA_PREVIEW=1`, `vercel domains add <slug>.preview.acta.agency` → `evidence.ts` → status `preview_ready`, pitch pack gets the link, the picture, and the upsell lines gather produced (redraw the logo, replace stock with your photos).
 
-1. `gh repo create F0xhopper/site-<slug> --template F0xhopper/acta-site-starter --private --clone` into `sites/<slug>`.
-2. Writes `acta/lead.json` from the database: listing, audit, reviews, description, must-haves, and the five competitor URLs for research.
-3. Runs the headless build with the caps above. Status `building`.
-4. Reads `acta/qa/gate.json`. On failure: status `build_failed`, reason stored, you see it in the review queue.
-5. `vercel link` to a new project `site-<slug>`, `vercel deploy --prod` with `ACTA_PREVIEW=1`, `vercel domains add <slug>.preview.acta.agency`. Preview URL stored.
-6. `scripts/evidence.ts`: their current site and the preview side by side on a phone frame, Lighthouse scores under each. Saved into the pitch pack.
-7. Status `preview_ready`. The pitch pack's draft email now has the real link. Leaderboard refreshes.
+New table `builds`: lead_id, repo_url, preview_url, vercel_project, status, attempts, gate_json_path, brand_json_path, last_error, built_at, reviewed_at, review_note. Statuses gain `gathered`, `build_failed`, `approved`.
 
-New table `builds`: lead_id, repo_url, preview_url, vercel_project, status, attempts, gate_json_path, last_error, built_at, reviewed_at, review_note. Pipeline statuses gain `build_failed` and `approved`.
-
-Wildcard DNS `*.preview.acta.agency` points at Vercel once. Each site project claims its own subdomain. When someone pays, their domain is added to the same project and `ACTA_PREVIEW` is switched off.
+Wildcard DNS `*.preview.acta.agency` points at Vercel once. When someone pays, their domain is added to the same project and the preview flag switched off.
 
 ---
 
-## 8. Where the human sits
+## 9. Where the human sits
 
-Three settings, in order of autonomy.
+| Setting | Pick | Gather check | Build | Review before send | Send |
+|---|---|---|---|---|---|
+| **A. Supervised** | you | you | agent | you | you |
+| **B. Mostly autonomous** | rule | agent | agent | you | you (phase two: agent drafts, you approve) |
+| **C. Full auto** | rule | agent | agent | agent | agent, email channel only |
 
-| Setting | Pick | Build | Review before send | Send |
-|---|---|---|---|---|
-| **A. Supervised** | you | agent | you | you |
-| **B. Mostly autonomous** | rule | agent | you | you (phase two: agent drafts, you approve) |
-| **C. Full auto** | rule | agent | agent | agent, email channel only |
+The review is two questions on your phone. **Is it them?** Right logo, right colours, their photos, nothing that belongs to a supplier. **Is it good?** Would you be proud to send it. The gates cover everything else.
 
-The auto-pick rule for B: tier A, twenty or more reviews, a review in the last twelve months, a category with a research board, not already built, capped at ten a week and two per category so you don't flood one high street with your own previews.
+The auto-pick rule for B: tier A, twenty or more reviews, a review in the last twelve months, not already built, capped at ten a week and two per category so you don't flood one high street with your own previews.
 
-**Recommendation: start on A, move to B, keep the review gate for good.**
-
-- The first ten builds are for teaching the skill, so pick them yourself and watch. Choose varied verticals. Read the build logs. Every correction you make is a line for `CLAUDE.md` or the skill.
-- Once the agent goes three builds in a row without a correction, switch on the auto-pick rule and let it build a batch overnight. Your morning is the review queue.
-- The two-minute review before anything is sent should stay permanently. It is the only step where a person checks what will be said in your name to a real business. The gates catch what can be measured. They cannot catch a site that is technically perfect and slightly embarrassing. The cost is two minutes per site, and it is the cheapest insurance you will ever buy.
-- C is worth considering only for the email channel, after fifty sends with no complaint and a conversion rate you're happy with. Even then, sample-check one in five.
+**Recommendation: start on A, move to B once the agent goes three builds without a correction, keep the review gate for good.** A wrong logo or a supplier's badge in the header would be embarrassing in a way no gate can measure, and it costs two minutes to catch.
 
 ---
 
-## 9. Sequence
+## 10. Sequence
 
-Roughly two working weeks. Each milestone ends with something you can see.
+Roughly two and a half working weeks, in an order that matters.
 
 | # | Milestone | Done when | Est. |
 |---|---|---|---|
-| 1 | Kit and starter | `acta-kit` published, `acta-site-starter` builds clean, gates run, `CLAUDE.md` written. Deploy the empty starter to a preview subdomain to prove the Vercel path. | 2 days |
-| 2 | First site by hand | Open the starter for one real tier A lead in Claude Code, build it interactively with the agent, get it live at `<slug>.preview.acta.agency`. Time it. Note every correction. | 1 day |
-| 3 | Research boards | `/research` skill working with Chrome. Boards for your first three verticals. | Half a day |
-| 4 | Four more by hand | Same as 2, different verticals. Keep the notes. | 2 days |
-| 5 | The build skill | Written from the notes. Run interactively on three fresh leads. Fix the skill, not the site, when it goes wrong. | 2 days |
-| 6 | Orchestrator | `pick`, `build`, `review`, `approve`, `reject` working end to end headlessly on one lead. Evidence image in the pack. | 2 days |
-| 7 | First batch | Five leads built overnight on setting A. Review in the morning. Retro. | 1 day |
-| 8 | Auto-pick | Rule in place, weekly batch, setting B. | Half a day |
+| 1 | Gather | `acta gather <slug>` produces brand.json, facts.json and a brand folder for twenty leads from the database. You check ten by eye: right logo, sensible colours, real photos, no badges. | 2 days |
+| 2 | Kit and starter | `acta-kit` published, starter builds clean, gates run, deploys empty to a preview subdomain. | 1.5 days |
+| 3 | First site by hand | One real tier A lead with a logo and photos, built interactively in Claude Code from the gathered brand, live at its preview subdomain. Note every correction. | 1 day |
+| 4 | Pinterest session and research | Saved session working headlessly, `/research` produces a board for a lead. | Half a day |
+| 5 | Four more by hand | Different verticals, one with no site at all (wordmark and stock path). | 2 days |
+| 6 | The build skill | Written from the notes. Run interactively on three fresh leads. Fix the skill, not the site. | 2 days |
+| 7 | Orchestrator | `pick`, `build`, `review`, `approve`, `reject` end to end headlessly on one lead. Uniqueness gate has five sites to compare against. | 2 days |
+| 8 | First batch and retro | Five overnight on setting A. Review in the morning. Retro. | 1 day |
+| 9 | Auto-pick | Rule on, weekly batch, setting B. | Half a day |
 
-Don't build the orchestrator before the skill works interactively. Don't write the skill before five sites exist. Every shortcut here costs a week later.
+Gather comes first because everything downstream is only as good as what it finds. Don't write the skill before five sites exist. Don't automate before the skill works interactively.
 
 ---
 
-## 10. Costs and limits
+## 11. Costs
 
 | Item | Cost |
 |---|---|
-| Vercel Pro | About £16 a month. Needed because previews are commercial. One project per site, no per-project fee at this scale. |
-| GitHub private repos | Free. |
-| Agent time | Twenty to forty-five minutes of headless Claude Code per site on your subscription. A batch of ten overnight is comfortably inside a Max plan's daily allowance, but watch it the first week. |
-| Domain | `acta.agency` registered, wildcard DNS for previews. |
-| Stock images | Free under Unsplash and Pexels licences. Curate once per vertical. |
+| Vercel Pro | About £16 a month. Previews are commercial use. |
+| GitHub private repos | Free |
+| Place Details with photos | One request per built lead, inside the free allowance at this volume |
+| Agent time | Thirty to sixty minutes headless per site, longer than a templated build because it designs from scratch. Ten overnight sits inside a Max plan's allowance, but watch the first week. |
+| Pinterest | Free. Automated browsing is against its terms; twenty pins per lead at human pace is the risk you're choosing. |
+| Domain | `acta.agency` with wildcard DNS |
 
 ---
 
-## 11. What stays out of scope until phase two
+## 12. Out of scope until phase two
 
-Sending anything. Follow-ups. The CRM view. Payment links, domain transfer, handover docs. Phase one ends at "a reviewed preview and a pitch pack with the link and the picture". The playbook still covers the send until the outreach stage is built.
+Sending anything, follow-ups, the CRM view, payment, domain transfer, handover. Phase one ends at a reviewed preview and a pitch pack with the link, the picture and the upsell lines.
