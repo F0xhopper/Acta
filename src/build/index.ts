@@ -59,7 +59,10 @@ async function stepRepo(ctx: Ctx) {
   const dir = copyStarter(ctx.slug, ctx.opts.force);
   ctx.dir = dir;
   api.copyIntoRepo(ctx.gather, dir);
-  writeFile(dir, SITE_PATHS.site, siteContentSource(ctx.gather.brand, ctx.gather.facts));
+  // Use the copies inside the repo: their asset paths are repo-relative, the cached ones are not.
+  const brandInRepo = BrandSchema.parse(readJson(join(dir, SITE_PATHS.brand)));
+  const factsInRepo = FactsSchema.parse(readJson(join(dir, SITE_PATHS.facts)));
+  writeFile(dir, SITE_PATHS.site, siteContentSource(brandInRepo, factsInRepo));
   ctx.log.info('repo', `starter copied to ${dir}, brand and facts seeded`);
   await installDeps(dir);
   await ensureGit(dir);

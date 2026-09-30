@@ -2,7 +2,13 @@
 import type { Brand, Facts } from './contracts.js';
 import { slugify } from '../util/slug.js';
 
-const publicPath = (p: string | null | undefined) => (p ? '/' + p.replace(/^public\//, '') : null);
+/** public/brand/logo.png -> /brand/logo.png. Tolerates an absolute path by keeping everything from /brand/ on. */
+const publicPath = (p: string | null | undefined) => {
+  if (!p) return null;
+  const i = p.indexOf('/brand/');
+  if (i >= 0) return p.slice(i);
+  return '/' + p.replace(/^\/?public\//, '').replace(/^\//, '');
+};
 
 export function siteContentSource(brand: Brand, facts: Facts): string {
   const b = facts.business;

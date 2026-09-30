@@ -87,10 +87,20 @@ export async function savePhoto(url: string, dest: string): Promise<{ width: num
   try {
     const meta = await sharp(got.buf).metadata();
     if (!meta.width || meta.width < 600) return null;
-    const out = await sharp(got.buf).rotate().jpeg({ quality: 82 }).toBuffer({ resolveWithObject: true });
+    const out = await encodePhotoUnderBudget(got.buf);
     writeFileSync(dest, out.data);
     return { width: out.info.width, height: out.info.height };
   } catch {
     return null;
   }
+}
+
+/** JPEG under the site's 300 KB image budget, stepping down size and quality until it fits. */
+export async function encodePhotoUnderBudget(buf: Buffer, max = 280 * 1024) {
+  let out = await sharp(buf).rotate().resize({ width: 1600, withoutEnlargement: true }).jpeg({ quality: 82, mozjpeg: true }).toBuffer({ resolveWithObject: true });
+  for (const [width, quality] of [[1600, 72], [1400, 68], [1200, 64], [1000, 60], [900, 55]] as const) {
+    if (out.data.length <= max) break;
+    out = await sharp(buf).rotate().resize({ width, withoutEnlargement: true }).jpeg({ quality, mozjpeg: true }).toBuffer({ resolveWithObject: true });
+  }
+  return out;
 }

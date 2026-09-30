@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import sharp from 'sharp';
+import { encodePhotoUnderBudget } from './download.js';
 import { CACHE_DIR } from '../../config.js';
 import { fetchWithTimeout, HttpError } from '../../util/http.js';
 
@@ -54,7 +55,7 @@ export async function downloadPlacePhoto(photo: PlacePhoto, key: string, dest: s
   const buf = Buffer.from(await res.arrayBuffer());
   const meta = await sharp(buf).metadata();
   if (!meta.width || meta.width < 600) return null;
-  const out = await sharp(buf).rotate().jpeg({ quality: 82 }).toBuffer({ resolveWithObject: true });
+  const out = await encodePhotoUnderBudget(Buffer.from(buf));
   writeFileSync(dest, out.data);
   return { path: dest, width: out.info.width, height: out.info.height, attribution: photo.authorAttributions?.[0]?.displayName ?? null };
 }
