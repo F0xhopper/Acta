@@ -201,7 +201,7 @@ An agent runs a general process per lead. The process is fixed, the output is be
 
 **Phase 3, content.** Written end to end from the listing, reviews, the brief and the competitor copy patterns. Facts are locked: name, phone, address, hours, rating and review quotes come from the listing verbatim. A claims check blocks anything not evidenced in the listing or reviews.
 
-**Phase 4, build.** A new app under `sites/<slug>` from the starter, composing and adapting blocks from `packages/kit` and writing bespoke sections where the brief calls for them. The kit is the floor, not the ceiling. Stock imagery from the licensed library, text logo, Open Graph image, LocalBusiness schema, sitemap and robots come with the starter.
+**Phase 4, build.** A new git repo per site, stamped from the `acta-site-starter` template, composing and adapting the starter's blocks and writing bespoke sections where the brief calls for them. Plumbing that must stay consistent comes from the `@acta/kit` package. The kit is the floor, not the ceiling. Stock imagery from the licensed library, text logo, Open Graph image, LocalBusiness schema, sitemap and robots come with the starter.
 
 **Phase 5, QA loop.** Lighthouse mobile and Playwright screenshots at phone, tablet and desktop. The agent compares its screenshots against the brief's references and its own gates, fixes, and repeats up to three times. Gates: performance 90 or above, SEO 95 or above, no broken links, alt text on every image, call and WhatsApp links resolve, name and address and phone match the listing exactly.
 
@@ -315,11 +315,11 @@ web-agency-pipeline/
     score/               score.ts
     report/              shortlist.ts, pack.ts
     crm/                 status.ts
-  .claude/skills/build/  the /build skill: the general process the agent follows (phase 1)
-  packages/kit/          shared blocks, SEO plumbing, performance defaults (phase 1)
-  starter/               the app every site starts from (phase 1)
-  sites/<slug>/          one app per lead, bespoke on top of the kit (phase 1)
-  research/              per-vertical inspiration cache and reference list (phase 1)
+  research/<category>/   per-vertical inspiration boards, refreshed monthly (phase 1)
+  sites/<slug>/          local clones of each site's own repo, gitignored (phase 1)
+  (separate repos)       acta-site-starter: the template every site starts from, with CLAUDE.md, skills, gates
+                         acta-kit: npm package of plumbing the agent never edits
+                         site-<slug>: one repo per built site
   data/                  gitignored: leads.db, screenshots/
   out/                   gitignored: shortlists, pitch packs
 ```
@@ -331,7 +331,7 @@ web-agency-pipeline/
 | Phase | Scope | Done when |
 |---|---|---|
 | 0, MVP | Discover, audit, score, shortlist, pitch pack. Manual build and manual send. | A weekly run produces a ranked shortlist with evidence, and 30 pitches have gone out by hand. |
-| 1 | The `/build` skill: research, brief, content, bespoke build on the kit, QA loop, deploy. Evidence images. | A shortlisted lead becomes a reviewed live preview with one command in under an hour of agent time and two minutes of yours. |
+| 1 | The `/build` skill: research, brief, content, bespoke build on the kit, QA loop, deploy. Evidence images. Detailed in [BUILD-PLAN.md](BUILD-PLAN.md). | A shortlisted lead becomes a reviewed live preview with one command in under an hour of agent time and two minutes of yours. |
 | 2 | Outreach drafts, sending on approval, follow-up scheduling, CRM view. | Weekly time spent on outreach admin is under an hour. |
 | 3 | Stripe, domain attach, handover docs, uptime, monthly billing. | A "yes" becomes a live site on their domain within a day with no manual DNS work. |
 | 4 | Scheduled weekly runs, reporting, expansion beyond Birmingham. | The pipeline runs unattended and you only do Pick and replies. |

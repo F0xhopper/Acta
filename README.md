@@ -31,7 +31,7 @@ v1 automates the first three stages and hands you a ranked shortlist with eviden
 |---|---|---|
 | Discover, audit, score, shortlist, pitch packs | automated | |
 | Pick who to build | you | you, always |
-| Research, build, deploy preview, evidence | by hand, with the playbook | phase 1: build agent |
+| Research, build, deploy preview, evidence | by hand, with the playbook | phase 1: build agent, planned in [docs/BUILD-PLAN.md](docs/BUILD-PLAN.md) |
 | Draft and send outreach, follow-ups, CRM | by hand | phase 2: sends on your approval |
 | Payment, domain, handover, monthly billing | by hand | phase 3 |
 | Scheduled weekly runs, reporting | by hand | phase 4 |
