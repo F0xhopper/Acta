@@ -1,4 +1,4 @@
-import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { basename, join, relative } from 'node:path';
 import { DATA_DIR, env, findCategory } from '../../config.js';
 import { fullLeads, getCompaniesHouse } from '../../db/queries.js';
@@ -9,7 +9,7 @@ import { displayUkPhone } from '../../util/phone.js';
 import { BrandSchema, FactsSchema, SITE_PATHS, type Brand, type Facts } from '../contracts.js';
 import { colourWord, dominantColours, toHex, voteColours, type Hex } from './colours.js';
 import { crawlSite } from './crawl.js';
-import { saveLogo, savePhoto } from './download.js';
+import { looksLikeGoogleBadge, saveLogo, savePhoto } from './download.js';
 import { claimsFromReviews, extractAreas, extractClaims, extractServices, toneHints } from './facts.js';
 import { extractFonts } from './fonts.js';
 import { rankLogoCandidates } from './logo.js';
@@ -228,19 +228,37 @@ export async function gather(full: FullLead, opts: GatherOpts = {}): Promise<Gat
   let logo: Brand['logo'] = { path: null, format: null, width: null, height: null, quality: 'none', source: 'none', source_url: null };
   let logoColours: Hex[] = [];
   const ranking = rankLogoCandidates(pages);
+  // Save up to five accepted candidates so the designer can check them by eye, then pick the best by ranking and size.
+  const candDir = join(dir, 'logo-candidates');
+  rmSync(candDir, { recursive: true, force: true });
+  mkdirSync(candDir, { recursive: true });
+  const accepted: { cand: (typeof ranking.candidates)[number]; saved: NonNullable<Awaited<ReturnType<typeof saveLogo>>> }[] = [];
   for (const cand of ranking.candidates) {
-    const saved = await saveLogo(cand.url, join(dir, 'logo'), { allowLarge: cand.source !== 'og_image' });
+    if (accepted.length >= 5) break;
+    const saved = await saveLogo(cand.url, join(candDir, String(accepted.length + 1)), { allowLarge: cand.source !== 'og_image' });
     if (!saved) continue;
-    logo = { path: saved.path, format: saved.format, width: saved.width, height: saved.height, quality: saved.quality, source: cand.source, source_url: cand.url };
-    files.logo = saved.path;
-    if (saved.format === 'png') {
-      try { logoColours = (await dominantColours(readFileSync(saved.path))).map((c) => c.hex); } catch { /* none */ }
+    if (saved.format === 'png' && await looksLikeGoogleBadge(readFileSync(saved.path))) {
+      ranking.rejected.push({ url: cand.url, why: 'looks like a Google review badge' });
+      log(`gather: rejected ${cand.source} candidate, it looks like a Google review badge`);
+      try { rmSync(saved.path); } catch { /* ignore */ }
+      continue;
+    }
+    accepted.push({ cand, saved });
+  }
+  writeFileSync(join(candDir, 'candidates.json'), JSON.stringify(accepted.map((a, i) => ({ file: basename(a.saved.path), rank: i + 1, source: a.cand.source, why: a.cand.why, url: a.cand.url, width: a.saved.width, height: a.saved.height, quality: a.saved.quality })), null, 2));
+  const pick = accepted.find((a) => a.saved.quality === 'svg' || a.saved.quality === 'raster_ok') ?? accepted[0];
+  if (pick) {
+    const dest = join(dir, `logo.${pick.saved.format}`);
+    copyFileSync(pick.saved.path, dest);
+    logo = { path: dest, format: pick.saved.format, width: pick.saved.width, height: pick.saved.height, quality: pick.saved.quality, source: pick.cand.source, source_url: pick.cand.url };
+    files.logo = dest;
+    if (pick.saved.format === 'png') {
+      try { logoColours = (await dominantColours(readFileSync(dest))).map((c) => c.hex); } catch { /* none */ }
     } else {
-      const svg = readFileSync(saved.path, 'utf8');
+      const svg = readFileSync(dest, 'utf8');
       logoColours = [...new Set([...svg.matchAll(/#[0-9a-fA-F]{6}\b/g)].map((m) => m[0].toLowerCase()))].filter((h) => !/^#f{6}$|^#0{6}$/i.test(h)).slice(0, 5);
     }
-    log(`gather: logo from ${cand.source} (${saved.quality})`);
-    break;
+    log(`gather: logo from ${pick.cand.source} (${pick.saved.quality}), ${accepted.length} candidates saved for the designer to check`);
   }
   if (ranking.rejected.length) notes.push(`rejected logo candidates: ${ranking.rejected.map((r) => r.url.split('/').pop()).join(', ')}`);
 
@@ -286,6 +304,8 @@ export function copyIntoRepo(result: GatherResult, repoDir: string): { brandJson
   } else {
     brand.logo.path = null;
   }
+  const candSrc = join(result.dir, 'logo-candidates');
+  if (existsSync(candSrc)) cpSync(candSrc, join(brandOut, 'logo-candidates'), { recursive: true });
   brand.photos = brand.photos.filter((p) => existsSync(p.path)).map((p) => {
     const dest = join(photosOut, basename(p.path));
     copyFileSync(p.path, dest);

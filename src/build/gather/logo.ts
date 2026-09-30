@@ -25,13 +25,17 @@ export function rankLogoCandidates(pages: PageData[]): LogoRanking {
   };
 
   const headerImgs = home.images.filter((i) => i.inHeader);
+  const anyNamed = headerImgs.some((img) => /logo/i.test(`${img.src} ${img.alt ?? ''} ${img.className ?? ''} ${img.title ?? ''}`));
+  // A header full of anonymous images is nav clutter: review badges, social icons, supplier marks. Then the owner-set
+  // touch icon (55) is the safer bet than "whatever came first", so the first image drops below it.
+  const crowded = !anyNamed && headerImgs.length >= 3;
   headerImgs.forEach((img: PageImage, idx) => {
     const named = /logo/i.test(`${img.src} ${img.alt ?? ''} ${img.className ?? ''} ${img.title ?? ''}`);
     const sized = img.width === 0 || (img.width >= 60 && img.width <= 800);
     if (!sized) return;
     const fields = [img.alt, img.title, img.className, img.nearText];
     if (named) add(img.src, 'site_header', 100 - idx, 'header image named logo', fields);
-    else if (idx === 0) add(img.src, 'site_header', /\.svg(\?|$)/i.test(img.src) ? 80 : 70, 'first image in the header', fields);
+    else if (idx === 0) add(img.src, 'site_header', crowded ? 50 : /\.svg(\?|$)/i.test(img.src) ? 80 : 70, crowded ? 'first of several anonymous header images' : 'first image in the header', fields);
     else add(img.src, 'site_header', 40 - idx, 'image in the header', fields);
   });
   // Any image named logo outside the header, e.g. a hero wordmark.

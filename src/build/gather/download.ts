@@ -104,3 +104,20 @@ export async function encodePhotoUnderBudget(buf: Buffer, max = 280 * 1024) {
   }
   return out;
 }
+
+/** Google's four brand colours together mean a review badge, not a logo. */
+const GOOGLE = [[66, 133, 244], [234, 67, 53], [251, 188, 5], [52, 168, 83]] as const;
+export async function looksLikeGoogleBadge(buf: Buffer): Promise<boolean> {
+  try {
+    const { data, info } = await sharp(buf).resize(64, 64, { fit: 'inside' }).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+    const counts = [0, 0, 0, 0];
+    let opaque = 0;
+    for (let i = 0; i < data.length; i += info.channels) {
+      if (data[i + 3] < 128) continue;
+      opaque++;
+      GOOGLE.forEach(([r, g, b], k) => { if (Math.abs(data[i] - r) + Math.abs(data[i + 1] - g) + Math.abs(data[i + 2] - b) < 90) counts[k]++; });
+    }
+    if (!opaque) return false;
+    return counts.filter((c) => c / opaque >= 0.02).length >= 3;
+  } catch { return false; }
+}

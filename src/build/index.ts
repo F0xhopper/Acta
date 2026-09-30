@@ -100,7 +100,12 @@ async function stepAgent(ctx: Ctx, prompt = '/build') {
   const left = await commitAll(ctx.dir, 'wip: changes left uncommitted by the agent');
   if (left) ctx.log.warn('agent', 'committed changes the agent left uncommitted');
   updateBuild(ctx.full.lead.id, { agent_result_path: resultPath, agent_turns: r.turns, agent_seconds: r.seconds, agent_cost_usd: r.costUsd, head_sha: await headSha(ctx.dir), built_at: new Date().toISOString() });
-  if (!r.ok) throw new Error(`agent ${r.timedOut ? 'timed out' : 'failed'}: ${r.message.slice(0, 400)}`);
+  if (!r.ok) {
+    const limit = /session limit|usage limit|rate limit|resets? \d/i.test(r.message);
+    throw new Error(limit
+      ? `paused: ${r.message.slice(0, 200)}. Work so far is committed; run the same build command after the reset and it continues from the artefacts in acta/.`
+      : `agent ${r.timedOut ? 'timed out' : 'failed'}: ${r.message.slice(0, 400)}`);
+  }
   if (!existsSync(join(ctx.dir, SITE_PATHS.buildLog))) ctx.log.warn('agent', 'no build log written');
 }
 

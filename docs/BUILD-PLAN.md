@@ -34,8 +34,8 @@ Companion to [PIPELINE.md](PIPELINE.md) (the whole design) and [PLAYBOOK.md](PLA
 | Repo | What it is |
 |---|---|
 | `Acta` (this one) | The pipeline. Finds leads, gathers the brand, orchestrates builds, tracks status. |
-| `acta-site-starter` | GitHub template every site starts from. Infrastructure only: Next.js, Tailwind with an empty token file, `CLAUDE.md`, skills, subagents, gate scripts, deploy config. No components, no layouts, no colours. |
-| `acta-kit` | npm package of plumbing the agent never edits: schema, contact form handling, image pipeline, sitemap, preview noindex, unstyled accessibility primitives (skip link, focus ring, form field wiring). |
+| `starter/` (in this repo for now) | The template every site starts from, copied into `sites/<slug>` and pushed as its own repo. Infrastructure only: Next.js, Tailwind with an empty token file, `CLAUDE.md`, skills, subagents, gate scripts, deploy config. No components, no layouts, no colours. Extracting it to a GitHub template repo is a later tidy-up. |
+| `src/kit/` inside the starter | Plumbing the agent never edits: schema, contact form handling, sitemap, preview noindex, contracts, unstyled accessibility primitives. Lives in each site for now; becomes the `@acta/kit` package when propagation matters. |
 | `site-<slug>` | One repo per site. Owned by the agent during the build, by the customer after. |
 
 Why per-site repos: a customer can be handed theirs, a site can diverge as far as it likes, a broken build can't touch another site, and Vercel's one-project-per-repo model just works.

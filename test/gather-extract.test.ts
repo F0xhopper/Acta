@@ -204,3 +204,20 @@ describe('assembly', () => {
     expect(q).toHaveLength(3);
   });
 });
+
+import { looksLikeGoogleBadge } from '../src/build/gather/download.js';
+
+describe('logo safety', () => {
+  it('rejects a Google-coloured review badge and accepts a one-colour mark', async () => {
+    const badge = await sharp(Buffer.from('<svg width="200" height="80"><rect width="50" height="80" fill="#4285F4"/><rect x="50" width="50" height="80" fill="#EA4335"/><rect x="100" width="50" height="80" fill="#FBBC05"/><rect x="150" width="50" height="80" fill="#34A853"/></svg>')).png().toBuffer();
+    const mark = await sharp(Buffer.from('<svg width="200" height="80"><rect width="200" height="80" fill="#0b3d91"/><circle cx="100" cy="40" r="30" fill="#fff"/></svg>')).png().toBuffer();
+    expect(await looksLikeGoogleBadge(badge)).toBe(true);
+    expect(await looksLikeGoogleBadge(mark)).toBe(false);
+  });
+  it('prefers the touch icon over a crowd of anonymous header images', () => {
+    const img = (src: string) => ({ src, alt: '', title: null, className: '', nearText: '', width: 0, height: 0, inHeader: true });
+    const pages = [{ url: 'https://x.co.uk/', html: '', text: '', images: [img('https://x.co.uk/a.png'), img('https://x.co.uk/b.png'), img('https://x.co.uk/c.png')], icons: [{ rel: 'apple-touch-icon', href: 'https://x.co.uk/touch.png', sizes: '180x180' }], ogImage: null }];
+    const r = rankLogoCandidates(pages as never);
+    expect(r.candidates[0].source).toBe('apple_touch_icon');
+  });
+});

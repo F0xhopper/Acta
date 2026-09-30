@@ -9,14 +9,16 @@ describe('seo', () => {
   it('builds LocalBusiness JSON-LD with rating only when reviews exist', () => {
     const ld = localBusinessJsonLd(site);
     expect(ld['@type']).toBe('LocalBusiness');
-    expect(ld.telephone).toBe('+441210000000');
-    expect(ld.aggregateRating).toBeUndefined();
+    expect(ld.telephone).toBe(site.business.phone_e164 ?? undefined);
+    const unrated = localBusinessJsonLd({ ...site, business: { ...site.business, rating: null, review_count: null } });
+    expect(unrated.aggregateRating).toBeUndefined();
     const rated = localBusinessJsonLd({ ...site, business: { ...site.business, rating: 4.8, review_count: 12 } });
     expect(rated.aggregateRating).toEqual({ '@type': 'AggregateRating', ratingValue: 4.8, reviewCount: 12 });
   });
   it('root metadata carries a title template and preview robots', () => {
     const m = rootMetadata(site);
     expect((m.title as { template: string }).template).toContain(site.business.name);
-    expect(m.robots).toEqual({ index: true, follow: true });
+    const preview = process.env.ACTA_PREVIEW === '1';
+    expect(m.robots).toEqual(preview ? { index: false, follow: false } : { index: true, follow: true });
   });
 });
