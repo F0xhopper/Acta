@@ -19,6 +19,8 @@ function cleanEnv(): NodeJS.ProcessEnv {
   out.ACTA_BUILD = '1';
   out.ACTA_PREVIEW = '1';
   out.CI = '1';
+  // Optional: bill headless builds to an API key instead of the Claude subscription's session allowance.
+  if (process.env.ACTA_AGENT_API_KEY) out.ANTHROPIC_API_KEY = process.env.ACTA_AGENT_API_KEY;
   return out;
 }
 

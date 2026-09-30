@@ -149,6 +149,8 @@ The starter under `starter/` is infrastructure only: routes, metadata, schema, c
 
 Needs: the Claude Code CLI on this machine, `gh` logged in, and for deploys a Vercel Pro token, the Vercel GitHub app on the account and a wildcard preview domain. See `.env.example`.
 
+**Cost and limits.** The design agent runs on your Claude subscription by default. A full build is 100 to 200 turns and can use most of a session's allowance, and if the limit is hit the build pauses with the work committed. Run the same `build` command after the reset and it continues from the artefacts in `acta/`. To run builds without touching the subscription, set `ACTA_AGENT_API_KEY` in `.env` and they bill to the API instead, at roughly $5 to $15 per site.
+
 ## Getting good results
 
 - **Narrow area, specific trade.** "Personal trainers in Kings Heath" beats "gym trainer coach birmingham". Whole-city searches hit Google's 60-result cap and return the biggest firms, who least need you.
