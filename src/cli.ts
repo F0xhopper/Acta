@@ -17,6 +17,11 @@ import { displayUkPhone } from './util/phone.js';
 import type { FullLead } from './db/types.js';
 import { applyStatus } from './crm/status.js';
 import { log, setVerbose } from './util/log.js';
+import { approve, buildLead, reject, teardown, type BuildOpts } from './build/index.js';
+import { getBuild, listBuilds, recentEvents } from './build/queries.js';
+import { loadGather, loadResearch } from './build/apis.js';
+import { buildDir } from './build/log.js';
+import { join } from 'node:path';
 
 const program = new Command();
 program.name('pipeline').description('Find Birmingham businesses that need a website, audit them, score them, shortlist them.');
@@ -143,6 +148,101 @@ program.command('run').description('discover + audit + entity + score + shortlis
     }
     if (!o.dryRun) log.info(`leaderboard: ${writeLeaderboard().mdPath}`);
     log.info(`Places requests used this invocation: ${b.used}/${b.max}`);
+  });
+
+// ---------- build stage ----------
+
+const buildOpts = (o: Record<string, unknown>, b: Budget): BuildOpts => ({
+  budget: b, sandbox: !!o.sandbox, deploy: o.deploy === false ? false : o.deploy === true ? true : undefined, agent: o.agent !== false,
+  research: o.research !== false, force: !!o.force, fastGates: !!o.fastGates, dryRun: !!o.dryRun,
+  maxTurns: o.maxTurns ? Number(o.maxTurns) : undefined, maxMinutes: o.maxMinutes ? Number(o.maxMinutes) : undefined,
+});
+
+function printOutcome(r: { slug: string; name: string; state: string; repoUrl: string | null; previewUrl: string | null; evidence: string | null; dir: string; error: string | null }) {
+  console.log('');
+  console.log(`${r.name} (${r.slug}): ${r.state}${r.error ? ` at ${r.error}` : ''}`);
+  if (r.repoUrl) console.log(`  repo:     ${r.repoUrl}`);
+  console.log(`  local:    ${r.dir}`);
+  if (r.previewUrl) console.log(`  preview:  ${r.previewUrl}`);
+  else if (r.state === 'preview_ready') console.log(`  preview:  not deployed. cd ${r.dir} && pnpm dev`);
+  if (r.evidence) console.log(`  evidence: ${r.evidence}`);
+  console.log(`  log:      ${join(buildDir(r.slug), 'build.log')}`);
+}
+
+program.command('build').description('Build a site for a business: gather its brand and facts, create a repo, design it, test it, deploy a preview')
+  .argument('<business>', 'business name, or a lead slug from a shortlist')
+  .option('--sandbox', 'no GitHub repo, no Vercel; everything stays under sites/')
+  .option('--no-agent', 'skip the design agent (infrastructure and placeholder only)')
+  .option('--no-research', 'skip Pinterest and competitor research')
+  .option('--deploy', 'deploy even in a case where it would be skipped').option('--no-deploy', 'never deploy')
+  .option('--fast-gates', 'skip Lighthouse in the gates')
+  .option('--max-turns <n>').option('--max-minutes <n>')
+  .option('--force', 're-gather, re-copy the starter and rebuild from the start')
+  .option('--dry-run', 'show the steps that would run')
+  .action(async (business: string, o) => {
+    const r = await buildLead(business, buildOpts(o, budget()));
+    printOutcome(r);
+    if (r.error) process.exitCode = 1;
+  });
+
+program.command('gather').description('Gather brand and facts for a business without building').argument('<business>').option('--force')
+  .action(async (business: string, o) => {
+    const { resolveLead } = await import('./build/resolve.js');
+    const full = await resolveLead(business, { budget: budget(), log: (m) => console.log(`  ${m}`) });
+    const api = await loadGather();
+    const r = await api.gather(full, { force: o.force, log: (m) => console.log(`  ${m}`) });
+    const b = r.brand, f = r.facts;
+    console.log(JSON.stringify({ dir: r.dir, logo: { quality: b.logo.quality, source: b.logo.source }, palette: b.palette, fonts: b.fonts, photos: b.photos.length, claims: f.claims.map((c) => c.claim), services: f.services.map((s) => s.name), areas: f.areas, competitors: f.competitors.map((c) => c.name), upsells: b.quality.upsells }, null, 2));
+  });
+
+program.command('builds').description('Every build: state, links, cost').option('--failed', 'only failed builds')
+  .action((o) => {
+    const rows = listBuilds({ states: o.failed ? ['failed'] : undefined });
+    if (!rows.length) { console.log('No builds yet. Try: pnpm pipeline build "<business name>"'); return; }
+    for (const b of rows) {
+      const cost = b.agent_cost_usd !== null ? ` $${b.agent_cost_usd.toFixed(2)}` : '';
+      const time = b.agent_seconds !== null ? ` ${Math.round(b.agent_seconds / 60)}min` : '';
+      console.log(`${b.state.padEnd(14)} ${b.name.slice(0, 34).padEnd(34)} ${b.preview_url ?? b.repo_url ?? b.repo_dir ?? ''}${time}${cost}${b.state === 'failed' ? `
+${' '.repeat(15)}at ${b.failed_step}: ${b.last_error?.slice(0, 160)}` : ''}`);
+    }
+  });
+
+program.command('review').description('Previews waiting for your two-minute check, and failed builds')
+  .action(() => {
+    const rows = listBuilds({ states: ['preview_ready', 'failed'] });
+    if (!rows.length) { console.log('Nothing to review.'); return; }
+    for (const b of rows) {
+      console.log(`\n${b.name} (${b.slug}) — ${b.state}`);
+      if (b.state === 'failed') { console.log(`  failed at ${b.failed_step}: ${b.last_error}`); }
+      if (b.preview_url) console.log(`  preview:  ${b.preview_url}`); else if (b.repo_dir) console.log(`  local:    cd ${b.repo_dir} && pnpm dev`);
+      if (b.repo_url) console.log(`  repo:     ${b.repo_url}`);
+      if (b.evidence_path) console.log(`  evidence: ${b.evidence_path}`);
+      if (b.brand_json_path) console.log(`  brand:    ${b.brand_json_path}`);
+      console.log(`  approve:  pnpm pipeline approve ${b.slug}`);
+      console.log(`  reject:   pnpm pipeline reject ${b.slug} --note "..."`);
+      const ev = recentEvents(b.lead_id, 4);
+      for (const e of ev) console.log(`    ${e.at.slice(11, 19)} ${e.step ?? ''} ${e.message.slice(0, 120)}`);
+    }
+  });
+
+program.command('approve').argument('<slug>').action((slug: string) => { console.log(approve(slug)); });
+
+program.command('reject').argument('<slug>').requiredOption('--note <text>', 'what to change')
+  .option('--sandbox').option('--no-deploy').option('--fast-gates').option('--max-turns <n>').option('--max-minutes <n>')
+  .action(async (slug: string, o) => { const r = await reject(slug, o.note, buildOpts(o, budget())); printOutcome(r); if (r.error) process.exitCode = 1; });
+
+program.command('teardown').argument('<slug>').option('--keep-repo', 'leave the GitHub repo alone').option('--yes', 'confirm')
+  .action(async (slug: string, o) => {
+    if (!o.yes) { console.error('This removes the Vercel project and archives the repo. Add --yes to confirm.'); process.exitCode = 1; return; }
+    for (const n of await teardown(slug, { keepRepo: o.keepRepo })) console.log(`  ${n}`);
+  });
+
+program.command('research').description('Manage the Pinterest session used for design research').option('--login', 'open a browser to log in to Pinterest and save the session')
+  .action(async (o) => {
+    const api = await loadResearch();
+    const p = join(buildDir('_sessions'), 'pinterest.json');
+    if (o.login) { console.log('A browser will open. Log in to Pinterest, then wait; the session is saved when the login page goes away.'); await api.pinterestLogin(p); console.log(`saved ${p}`); }
+    else console.log(`Session file: ${p}. Run with --login to create or refresh it.`);
   });
 
 program.parseAsync(process.argv)

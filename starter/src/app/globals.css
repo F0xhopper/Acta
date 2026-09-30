@@ -1,0 +1,24 @@
+@import "tailwindcss";
+@import "../kit/kit.css";
+
+/* Tokens come from src/theme.ts via CSS variables set on <html> in layout.tsx. */
+@theme inline {
+  --color-primary: var(--primary);
+  --color-on-primary: var(--on-primary);
+  --color-secondary: var(--secondary);
+  --color-accent: var(--accent);
+  --color-neutral: var(--neutral);
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-text: var(--text);
+  --color-muted: var(--muted);
+  --font-heading: var(--font-heading);
+  --font-body: var(--font-body);
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius-md);
+  --radius-lg: var(--radius-lg);
+}
+
+html { background: var(--background); color: var(--text); }
+body { font-family: var(--font-body), system-ui, sans-serif; }
+h1, h2, h3, h4 { font-family: var(--font-heading), system-ui, sans-serif; }

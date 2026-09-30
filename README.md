@@ -112,6 +112,43 @@ The leaderboard refreshes on every `run`, `shortlist` and `status` change, so it
 
 Re-running a query updates listing data, skips audits fresher than 14 days, and never resets pipeline status. Anything you've marked contacted, won or lost stays off future shortlists. `lost` and `do_not_contact` also go on a suppression list.
 
+## Building a site
+
+The build stage is separate from discovery. Give it a business name or a lead slug and it goes end to end: gathers the brand and facts, creates a private GitHub repo from the starter, researches the design, has a Claude Code agent design and build the site from a blank page, runs the gates, pushes, deploys a preview to Vercel, and produces the before-and-after picture.
+
+```
+pnpm pipeline build "Fade it"                     # a business name; found in the database or looked up on Google
+pnpm pipeline build kings-heath-barber-fade-it    # or a lead slug from a shortlist
+pnpm pipeline build "Fade it" --sandbox           # no GitHub, no Vercel: everything stays under sites/
+pnpm pipeline build "Fade it" --no-agent          # infrastructure only, to test the plumbing
+pnpm pipeline build "Fade it" --dry-run           # show the steps it would run
+pnpm pipeline gather "Fade it"                    # just the brand and facts, printed
+
+pnpm pipeline builds                              # every build, its state, links and cost
+pnpm pipeline review                              # previews waiting for your two-minute check
+pnpm pipeline approve <slug>
+pnpm pipeline reject <slug> --note "hero photo is a supplier's van, use the shop front"
+pnpm pipeline teardown <slug> --yes
+pnpm pipeline research --login                    # save a Pinterest session for headless design research
+```
+
+What happens, in order. Each step is recorded in a builds table and a build can resume from where it stopped.
+
+| Step | What | Where it lands |
+|---|---|---|
+| gather | Google photos and attributes, a crawl of their existing site for logo, colours, fonts, photos, services and accreditations, Companies House, reviews. Every claim with its source | `data/brand/<slug>/`, then `acta/brand.json` and `acta/facts.json` in the repo |
+| repo | Copy of `starter/`, seeded with the brand, facts and a generated `src/content/site.ts`, committed, pushed to a new private repo `site-<slug>` | `sites/<slug>/`, GitHub |
+| research | Pinterest searches built from the brand (with a saved session), competitor screenshots from the database, a board for the designer | `acta/research/board.md` |
+| agent | `claude -p "/build"` in the repo with a clean environment and no tokens. Six phases: research, brief and theme, content, design and build, QA loop with a critic, hand over | commits in the repo, `acta/brief.md`, `acta/build-log.md` |
+| gate | The pipeline runs the site's gates itself: Lighthouse, links, images, facts, claims, contrast, brand, reach, preview, sitemap. Then a uniqueness check against every other site built. One revise round on failure | `acta/qa/gate.json` |
+| push | Push main; CI in the repo runs the same checks on Linux | GitHub Actions |
+| deploy | Vercel project, production deploy with `ACTA_PREVIEW=1` (noindex), subdomain, verified by fetch. Skipped cleanly when `VERCEL_TOKEN` isn't set | `https://<slug>.preview.acta.agency` |
+| evidence | Their site and the new one side by side on a phone with Lighthouse scores | `acta/qa/compare.png`, the pitch pack |
+
+The starter under `starter/` is infrastructure only: routes, metadata, schema, contact handling, the gate scripts, CI, the rules in `CLAUDE.md` and the build skill. No components, no layouts, no colours. Every site's design is written by the agent for that business.
+
+Needs: the Claude Code CLI on this machine, `gh` logged in, and for deploys a Vercel Pro token, the Vercel GitHub app on the account and a wildcard preview domain. See `.env.example`.
+
 ## Getting good results
 
 - **Narrow area, specific trade.** "Personal trainers in Kings Heath" beats "gym trainer coach birmingham". Whole-city searches hit Google's 60-result cap and return the biggest firms, who least need you.

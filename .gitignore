@@ -5,3 +5,9 @@ out/
 *.log
 .DS_Store
 coverage/
+sites/
+starter/node_modules/
+starter/.next/
+starter/acta/qa/
+starter/test-results/
+starter/playwright-report/

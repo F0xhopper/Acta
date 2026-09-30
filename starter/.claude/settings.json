@@ -1,0 +1,59 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pnpm *)",
+      "Bash(pnpm exec *)",
+      "Bash(node scripts/*)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git status*)",
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "Bash(ls *)",
+      "Bash(cat *)",
+      "Read",
+      "Edit",
+      "Write",
+      "Glob",
+      "Grep",
+      "WebFetch(domain:land-book.com)",
+      "WebFetch(domain:www.siteinspire.com)",
+      "WebFetch(domain:godly.website)",
+      "WebFetch(domain:fonts.google.com)"
+    ],
+    "deny": [
+      "Bash(git push*)",
+      "Bash(rm -rf*)",
+      "Bash(curl*)",
+      "Bash(wget*)",
+      "Bash(vercel*)",
+      "Bash(gh *)",
+      "Edit(src/kit/**)",
+      "Write(src/kit/**)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node -e \"const p=JSON.parse(require('fs').readFileSync(0,'utf8')).tool_input?.file_path||'';process.exit(/\\\\/src\\\\/.*\\\\.tsx?$/.test(p)?0:1)\" && pnpm -s typecheck 2>&1 | tail -20 || true"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node scripts/stop-hook.mjs",
+            "timeout": 600
+          }
+        ]
+      }
+    ]
+  }
+}
