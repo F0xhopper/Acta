@@ -46,7 +46,9 @@ export function hexToHsl(hex: Hex): { h: number; s: number; l: number } {
 export const hueDistance = (a: number, b: number) => { const d = Math.abs(a - b) % 360; return d > 180 ? 360 - d : d; };
 export const isNearWhite = (hex: Hex) => hexToRgb(hex).every((v) => v > 240);
 export const isNearBlack = (hex: Hex) => hexToRgb(hex).every((v) => v < 20);
-export const isBrandLike = (hex: Hex) => { const { s, l } = hexToHsl(hex); return s > 0.25 && l > 0.08 && l < 0.92; };
+/** Browser defaults that leak through unstyled links: never a brand colour. */
+const BROWSER_DEFAULTS = new Set(['#0000ee', '#0000ff', '#551a8b', '#800080', '#ff0000']);
+export const isBrandLike = (hex: Hex) => { if (BROWSER_DEFAULTS.has(hex.toLowerCase())) return false; const { s, l } = hexToHsl(hex); return s > 0.25 && l > 0.08 && l < 0.92; };
 
 export function distinct(a: Hex, b: Hex): boolean {
   const ha = hexToHsl(a), hb = hexToHsl(b);

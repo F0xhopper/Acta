@@ -221,3 +221,11 @@ describe('logo safety', () => {
     expect(r.candidates[0].source).toBe('apple_touch_icon');
   });
 });
+
+import { isBrandLike } from '../src/build/gather/colours.js';
+describe('brand colours', () => {
+  it('ignores browser default link colours', () => {
+    expect(isBrandLike('#0000ee')).toBe(false);
+    expect(isBrandLike('#0b3d91')).toBe(true);
+  });
+});
