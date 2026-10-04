@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { DATA_DIR, ROOT } from './config.js';
 import { run } from './build/exec.js';
 import { openDb } from './db/index.js';
+import { deployAvailable } from './build/deploy.js';
 
 export interface Check { name: string; ok: boolean; detail: string; required: boolean }
 
@@ -25,10 +26,8 @@ export async function doctor(): Promise<Check[]> {
   const session = join(DATA_DIR, 'builds', '_sessions', 'pinterest.json');
   const age = existsSync(session) ? Math.round((Date.now() - statSync(session).mtimeMs) / 86_400_000) : null;
   add('Pinterest session', age !== null && age < 30, age === null ? 'none saved: pnpm pipeline research --login (builds fall back without it)' : `${age} days old`, false);
-  if (env('VERCEL_TOKEN')) {
-    const who = await run('vercel', ['whoami', '--token', process.env.VERCEL_TOKEN!], { cwd: ROOT });
-    add('Vercel token', who.code === 0, who.code === 0 ? who.stdout.trim() : 'token rejected', false);
-  } else add('Vercel token', false, 'VERCEL_TOKEN not set: previews stay local', false);
+  const v = await deployAvailable();
+  add('Vercel', v.ok, v.ok ? `${v.detail}${process.env.PREVIEW_DOMAIN ? '' : ' (no PREVIEW_DOMAIN: previews use *.vercel.app URLs)'}` : `${v.detail}: previews stay local`, false);
   if (process.env.PREVIEW_DOMAIN) {
     const dig = await run('dig', ['+short', 'CNAME', `probe.${process.env.PREVIEW_DOMAIN}`], { cwd: ROOT });
     add('Preview wildcard DNS', dig.stdout.trim().length > 0, dig.stdout.trim() || `no CNAME for *.${process.env.PREVIEW_DOMAIN}`, false);

@@ -31,6 +31,8 @@ Estimate: two days, mostly waiting on agent runs.
 
 ## 1. Deploy
 
+**Status (4 October 2026): built and smoke-tested.** The CLI login on this machine is enough; a token is optional. `previewLabel`, `--from <step>`, `deploy-smoke` and the Vercel line in `doctor` exist. Two things found on the way: a project made from the CLI has no framework preset and serves nothing until it's set, and Standard Protection walls off every `*.vercel.app` address including production, so the pipeline sets both through the API with the CLI's own token. Still to do: the wildcard preview domain, and `vercel git connect` is untested because the smoke site has no GitHub remote.
+
 **Prerequisites, once**
 
 - Vercel Pro. A token named `acta-pipeline`, team-scoped. `VERCEL_TOKEN`, `VERCEL_TEAM_ID` in `.env`.
@@ -239,7 +241,7 @@ Smaller items, do them as they bite.
 | # | Workstream | Depends on | Estimate | Done when |
 |---|---|---|---|---|
 | 0 | Finish one build | nothing | 2 days | two reviewed sites, skill updated from the retro |
-| 1 | Deploy | Vercel account setup | half a day | `deploy-smoke` green, PHIT on its subdomain |
+| 1 | Deploy | Vercel account setup | done except the preview domain | `deploy-smoke` green |
 | 2 | Research session | nothing | half a day | a board with pins the brief uses |
 | 3 | Outreach | 1 (the email needs a link) | 3 days | one real send, one matched reply, one capped day |
 | 4 | Auto-pick and the loop | 0, 3 | done, except the outreach hook in `day` | a week unattended |

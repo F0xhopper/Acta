@@ -5,7 +5,7 @@ import type { BuildState, Step } from './state.js';
 export interface BuildRow {
   lead_id: number; state: BuildState; failed_step: Step | null; step_attempts: number; last_error: string | null;
   repo_dir: string | null; repo_url: string | null; seed_sha: string | null; head_sha: string | null;
-  vercel_project: string | null; deployment_url: string | null; preview_url: string | null;
+  vercel_project: string | null; deployment_url: string | null; preview_url: string | null; preview_label: string | null;
   brand_json_path: string | null; gate_json_path: string | null; evidence_path: string | null; agent_result_path: string | null;
   agent_turns: number | null; agent_seconds: number | null; agent_cost_usd: number | null; research_fallback: number | null;
   created_at: string; built_at: string | null; deployed_at: string | null; reviewed_at: string | null; review_note: string | null; torn_down_at: string | null; updated_at: string;

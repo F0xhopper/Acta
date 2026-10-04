@@ -130,6 +130,7 @@ pnpm pipeline approve <slug>
 pnpm pipeline reject <slug> --note "hero photo is a supplier's van, use the shop front"
 pnpm pipeline teardown <slug> --yes
 pnpm pipeline research --login                    # save a Pinterest session for headless design research
+pnpm pipeline deploy-smoke                        # prove the Vercel path with a throwaway site, then remove it
 ```
 
 What happens, in order. Each step is recorded in a builds table and a build can resume from where it stopped.
@@ -147,7 +148,9 @@ What happens, in order. Each step is recorded in a builds table and a build can 
 
 The starter under `starter/` is infrastructure only: routes, metadata, schema, contact handling, the gate scripts, CI, the rules in `CLAUDE.md` and the build skill. No components, no layouts, no colours. Every site's design is written by the agent for that business.
 
-Needs: the Claude Code CLI on this machine, `gh` logged in, and for deploys a Vercel Pro token, the Vercel GitHub app on the account and a wildcard preview domain. See `.env.example`.
+Needs: the Claude Code CLI on this machine, `gh` logged in, and for deploys either `vercel login` on this machine or a `VERCEL_TOKEN` in `.env`. See `.env.example`.
+
+**Deploys.** Each site becomes its own Vercel project, `site-<label>`, where the label is a short DNS-safe name like `kings-heath-oslo-s`. The pipeline sets the project's framework to Next.js and switches deployment protection to previews only, because Vercel's default puts a login wall on every `*.vercel.app` address including production, and a business owner has to be able to open the link. The preview is a production deployment with `ACTA_PREVIEW=1`, which adds the noindex header. With `PREVIEW_DOMAIN` set and `*.preview.<domain>` pointed at Vercel, the site is also attached to `<label>.preview.<domain>`; without it, the `<project>-<team>.vercel.app` address is used. `pnpm pipeline deploy-smoke` proves the whole path with a throwaway site and removes it. `pnpm pipeline build <slug> --from deploy` deploys a build that finished before deploys were set up. Previews are commercial use under Vercel's terms, so the team should be on Pro before real previews go out.
 
 **Cost and limits.** The design agent runs on your Claude subscription by default. A full build is 100 to 200 turns and can use most of a session's allowance, and if the limit is hit the build pauses with the work committed. Run the same `build` command after the reset and it continues from the artefacts in `acta/`. To run builds without touching the subscription, set `ACTA_AGENT_API_KEY` in `.env` and they bill to the API instead, at roughly $5 to $15 per site.
 

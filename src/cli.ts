@@ -164,6 +164,7 @@ const buildOpts = (o: Record<string, unknown>, b: Budget): BuildOpts => ({
   budget: b, sandbox: !!o.sandbox, deploy: o.deploy === false ? false : o.deploy === true ? true : undefined, agent: o.agent !== false,
   research: o.research !== false, force: !!o.force, fastGates: !!o.fastGates, dryRun: !!o.dryRun,
   maxTurns: o.maxTurns ? Number(o.maxTurns) : undefined, maxMinutes: o.maxMinutes ? Number(o.maxMinutes) : undefined,
+  from: o.from ? (String(o.from) as BuildOpts['from']) : undefined,
 });
 
 function printOutcome(r: { slug: string; name: string; state: string; repoUrl: string | null; previewUrl: string | null; evidence: string | null; dir: string; error: string | null }) {
@@ -188,6 +189,7 @@ program.command('build').description('Build a site for a business: gather its br
   .option('--fast-gates', 'skip Lighthouse in the gates')
   .option('--max-turns <n>').option('--max-minutes <n>')
   .option('--force', 're-gather, re-copy the starter and rebuild from the start')
+  .option('--from <step>', 'start at a step: gather, repo, research, agent, gate, push, deploy, evidence')
   .option('--dry-run', 'show the steps that would run')
   .action(async (business: string | undefined, o) => {
     if (o.picked) {
@@ -255,6 +257,16 @@ program.command('doctor').description('Check every prerequisite the pipeline nee
   console.log(formatDoctor(checks));
   if (!checks.filter((c) => c.required).every((c) => c.ok)) process.exitCode = 1;
 });
+
+program.command('deploy-smoke').description('Prove the Vercel path: deploy a throwaway starter site, verify the noindex header, remove it')
+  .option('--keep', 'leave the smoke project and folder in place')
+  .action(async (o) => {
+    const { deploySmoke } = await import('./build/smoke.js');
+    const r = await deploySmoke({ keep: o.keep });
+    r.notes.forEach((n) => console.log(`  ${n}`));
+    console.log(r.ok ? `deploy smoke PASSED: ${r.url}` : 'deploy smoke FAILED');
+    if (!r.ok) process.exitCode = 1;
+  });
 
 program.command('gather').description('Gather brand and facts for a business without building').argument('<business>').option('--force')
   .action(async (business: string, o) => {

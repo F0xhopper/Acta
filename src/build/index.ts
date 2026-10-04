@@ -12,7 +12,8 @@ import { writeLeaderboard } from '../report/leaderboard.js';
 import { agentAvailable, runAgent } from './agent.js';
 import { loadGather, loadResearch, type GatherResult } from './apis.js';
 import { BrandSchema, FactsSchema, SITE_PATHS, type GateReport } from './contracts.js';
-import { deployConfigured, deploySite, teardownDeploy } from './deploy.js';
+import { deployAvailable, deploySite, teardownDeploy } from './deploy.js';
+import { previewLabel } from './label.js';
 import { makeEvidence } from './evidence.js';
 import { runGates, takeShots } from './gates.js';
 import { buildDir, buildLogger } from './log.js';
@@ -20,7 +21,7 @@ import { ensureBuild, failBuild, getBuild, setBuildState, updateBuild, type Buil
 import { commitAll, copyStarter, createRemote, ensureGit, headSha, installDeps, pushMain, siteDir, writeFile } from './repo.js';
 import { resolveLead } from './resolve.js';
 import { siteContentSource } from './site-content.js';
-import { STEP_TARGET, stepsFrom, type Step } from './state.js';
+import { STEP_TARGET, STEPS, stepsFrom, type Step } from './state.js';
 import { checkUniqueness } from './unique.js';
 import { run } from './exec.js';
 
@@ -35,6 +36,7 @@ export interface BuildOpts {
   maxTurns?: number;
   maxMinutes?: number;
   dryRun?: boolean;
+  from?: Step;             // start at this step regardless of recorded state
 }
 
 interface Ctx { full: FullLead; slug: string; dir: string; log: ReturnType<typeof buildLogger>; opts: BuildOpts; gather?: GatherResult }
@@ -159,10 +161,19 @@ async function stepPush(ctx: Ctx) {
   if (ci.code === 0 && ci.stdout.trim().startsWith('[') && ci.stdout.includes('url')) ctx.log.info('push', `CI: ${ci.stdout.trim().slice(0, 200)}`);
 }
 
+function labelFor(ctx: Ctx): string {
+  const b = getBuild(ctx.full.lead.id);
+  if (b?.preview_label) return b.preview_label;
+  const label = previewLabel(ctx.slug, ctx.full.lead.name, ctx.full.lead.area, ctx.full.lead.category_key);
+  updateBuild(ctx.full.lead.id, { preview_label: label });
+  return label;
+}
+
 async function stepDeploy(ctx: Ctx) {
-  const want = ctx.opts.deploy ?? (!ctx.opts.sandbox && deployConfigured());
-  if (!want) { ctx.log.warn('deploy', deployConfigured() ? 'skipped by flag' : 'skipped: VERCEL_TOKEN not set. Run the site locally with `pnpm dev` in the repo, or add the token and rerun.'); return; }
-  const d = await deploySite(ctx.dir, ctx.slug, { log: (m) => ctx.log.info('deploy', m) });
+  const avail = await deployAvailable();
+  const want = ctx.opts.deploy ?? (!ctx.opts.sandbox && avail.ok);
+  if (!want) { ctx.log.warn('deploy', avail.ok ? 'skipped by flag' : `skipped: ${avail.detail}. The site runs locally with \`pnpm dev\` in the repo.`); return; }
+  const d = await deploySite(ctx.dir, ctx.slug, { log: (m) => ctx.log.info('deploy', m), label: labelFor(ctx) });
   for (const w of d.warnings) ctx.log.warn('deploy', w);
   updateBuild(ctx.full.lead.id, { vercel_project: d.project, deployment_url: d.deploymentUrl, preview_url: d.previewUrl, deployed_at: new Date().toISOString() });
   ctx.log.info('deploy', `live at ${d.previewUrl}`);
@@ -197,10 +208,12 @@ export async function buildLead(input: string, opts: BuildOpts): Promise<BuildOu
   let row: BuildRow = ensureBuild(full.lead.id);
   if (opts.force && row.state !== 'picked') { setBuildState(full.lead.id, 'picked'); row = getBuild(full.lead.id)!; }
   const ctx: Ctx = { full, slug, dir: row.repo_dir ?? siteDir(slug), log, opts };
-  const steps = stepsFrom(row.state, row.failed_step);
+  const steps = opts.from ? STEPS.slice(STEPS.indexOf(opts.from)) : stepsFrom(row.state, row.failed_step);
+  if (opts.from && !existsSync(ctx.dir)) throw new Error(`--from ${opts.from}: no site repo at ${ctx.dir}; run a full build first`);
   if (opts.dryRun) {
+    const avail = await deployAvailable();
     console.log(`Would run for ${full.lead.name} (${slug}), currently ${row.state}: ${steps.join(' -> ') || 'nothing, already preview_ready'}`);
-    console.log(`  sandbox=${!!opts.sandbox} agent=${opts.agent !== false} research=${opts.research !== false} deploy=${opts.deploy ?? (!opts.sandbox && deployConfigured())}`);
+    console.log(`  sandbox=${!!opts.sandbox} agent=${opts.agent !== false} research=${opts.research !== false} deploy=${opts.deploy ?? (!opts.sandbox && avail.ok)} (${avail.detail})`);
     return { slug, name: full.lead.name, state: row.state, repoUrl: row.repo_url, previewUrl: row.preview_url, evidence: row.evidence_path, dir: ctx.dir, error: null };
   }
   if (!steps.length) log.info(null, `already ${row.state}, nothing to do (use --force to rebuild)`);
@@ -268,7 +281,8 @@ export async function teardown(slug: string, opts: { keepRepo?: boolean } = {}):
   if (!b) return [`${slug} was never built`];
   const notes: string[] = [];
   const dir = b.repo_dir ?? siteDir(slug);
-  if (existsSync(dir)) notes.push(...await teardownDeploy(dir, slug));
+  const label = b.preview_label ?? previewLabel(slug, full.lead.name, full.lead.area, full.lead.category_key);
+  if (b.vercel_project) notes.push(...await teardownDeploy(existsSync(dir) ? dir : process.cwd(), label));
   if (b.repo_url && !opts.keepRepo) {
     const r = await run('gh', ['repo', 'archive', b.repo_url, '--yes'], { cwd: process.cwd() });
     notes.push(`GitHub archive: ${r.code === 0 ? 'ok' : (r.stderr || r.stdout).trim().split('\n').pop()?.slice(0, 120)}`);
