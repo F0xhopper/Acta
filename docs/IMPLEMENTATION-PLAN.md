@@ -157,6 +157,8 @@ Estimate: three days.
 
 ## 4. Auto-pick and the weekly loop
 
+**Status (4 October 2026): built.** `sweep`, `searches`, `pick --auto`, `week`, `day`, `schedule`, `doctor` exist and are tested. The `day` job gains outreach sends and the inbox poll when workstream 3 lands. Outcome multipliers switch on by themselves once contacts exist.
+
 ### Auto-pick
 
 `pnpm pipeline pick --auto [--max 10]` applies the rule and marks leads `picked`:
@@ -240,7 +242,7 @@ Smaller items, do them as they bite.
 | 1 | Deploy | Vercel account setup | half a day | `deploy-smoke` green, PHIT on its subdomain |
 | 2 | Research session | nothing | half a day | a board with pins the brief uses |
 | 3 | Outreach | 1 (the email needs a link) | 3 days | one real send, one matched reply, one capped day |
-| 4 | Auto-pick and the loop | 0, 3 | 1.5 days | a week unattended |
+| 4 | Auto-pick and the loop | 0, 3 | done, except the outreach hook in `day` | a week unattended |
 | 5 | Close | first yes | 1 day | one site live and paid |
 | 6 | Hardening | as needed | ongoing | |
 

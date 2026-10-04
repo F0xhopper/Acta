@@ -34,6 +34,7 @@ export interface LeadRow {
   editorial_summary: string | null;
   reviews_json: string | null;
   last_review_at: string | null;
+  photo_count: number | null;
   discovered_at: string;
   last_seen_at: string;
 }

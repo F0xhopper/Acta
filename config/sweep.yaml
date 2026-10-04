@@ -1,0 +1,30 @@
+# The weekly discovery sweep. Each search is one trade across an area group from config/areas.yaml
+# (or a comma list of areas). The sweep runs the searches that are due, best yield first, until the
+# Places request budget for the run is used. Over several weeks it rotates through everything.
+budget: 30                 # Places requests per sweep run (cached searches cost nothing)
+pages: 2                   # pages of 20 results per query
+
+rotation:
+  revisit_days: 42         # a query is due again this long after its last run
+  keep_yield: 3.0          # tier A+B per 10 found: always re-run when due
+  drop_below: 1.0          # below this on two runs: retire the query
+  fresh_first: true        # never-run queries go before known-good ones so coverage grows
+
+searches:
+  - { trade: barbers,            areas: high_streets }
+  - { trade: beauty salon,       areas: high_streets }
+  - { trade: cafes,              areas: high_streets }
+  - { trade: tattoo studio,      areas: high_streets }
+  - { trade: plumbers,           areas: trades, variants: true }
+  - { trade: electricians,       areas: trades, variants: true }
+  - { trade: roofers,            areas: trades }
+  - { trade: builders,           areas: trades }
+  - { trade: landscape gardener, areas: trades }
+  - { trade: painter and decorator, areas: trades }
+  - { trade: cleaning company,   areas: trades }
+  - { trade: personal trainers,  areas: high_streets }
+  - { trade: dentist,            areas: affluent }
+  - { trade: accountant,         areas: affluent }
+  - { trade: physiotherapist,    areas: affluent }
+  - { trade: estate agent,       areas: affluent }
+  - { trade: driving school,     areas: trades }

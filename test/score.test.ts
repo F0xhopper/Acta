@@ -8,7 +8,7 @@ const lead = (over: Partial<LeadRow> = {}): LeadRow => ({
   id: 1, slug: 'x', place_id: 'p1', name: 'Acme', category_key: 'plumber', category_raw: 'plumbers', area: 'Erdington', source_query: 'q', address: 'B23', postcode: 'B23 6QQ', outward_code: 'B23',
   lat: null, lng: null, phone_e164: '+441211234567', website_url: null, google_maps_url: null, rating: 4.8, review_count: 40, business_status: 'OPERATIONAL', primary_type: null, types_json: null,
   opening_hours_json: '["Mon: 9-5"]', is_chain: 0, raw_json: null, discovered_at: '', last_seen_at: '',
-  type_label: null, editorial_summary: null, reviews_json: null, last_review_at: null, ...over,
+  type_label: null, editorial_summary: null, reviews_json: null, last_review_at: null, photo_count: null, ...over,
 });
 const audit = (over: Partial<AuditRow> = {}): AuditRow => ({
   lead_id: 1, audited_at: '', run_id: null, website_status: 'none', input_url: null, final_url: null, final_domain: null, http_status: null, tls_error: null, redirect_count: null, ttfb_ms: null,

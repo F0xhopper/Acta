@@ -25,6 +25,7 @@ export interface PlaceResult {
   editorialSummary?: { text?: string };
   primaryTypeDisplayName?: { text?: string };
   reviews?: PlaceReview[];
+  photos?: { name?: string; widthPx?: number; heightPx?: number }[];
 }
 
 export interface PlaceReview {
@@ -42,7 +43,7 @@ const FIELD_MASK = [
   'places.nationalPhoneNumber', 'places.internationalPhoneNumber', 'places.websiteUri', 'places.rating', 'places.userRatingCount',
   'places.businessStatus', 'places.primaryType', 'places.types', 'places.googleMapsUri', 'places.regularOpeningHours',
   // Description and activity: Google's summary when it has one, the type label, and up to five reviews with dates.
-  'places.editorialSummary', 'places.primaryTypeDisplayName', 'places.reviews', 'nextPageToken',
+  'places.editorialSummary', 'places.primaryTypeDisplayName', 'places.reviews', 'places.photos', 'nextPageToken',
 ].join(',');
 
 export class BudgetExceeded extends Error {}
@@ -101,7 +102,7 @@ export async function searchText(textQuery: string, opts: SearchOpts): Promise<P
   const results: PlaceResult[] = [];
   let pageToken: string | undefined;
   for (let page = 1; page <= pages; page++) {
-    const cacheKey = `searchText:v2:${textQuery}:page${page}`;
+    const cacheKey = `searchText:v3:${textQuery}:page${page}`;
     const cached = readCache<{ places?: PlaceResult[]; nextPageToken?: string }>(cacheKey, cacheDays);
     let data: { places?: PlaceResult[]; nextPageToken?: string };
     if (cached) {

@@ -8,7 +8,7 @@ const d = (): DatabaseSync => openDb();
 // ---------- leads ----------
 
 const LISTING_COLS = ['name', 'address', 'postcode', 'outward_code', 'lat', 'lng', 'phone_e164', 'website_url', 'google_maps_url', 'rating', 'review_count',
-  'business_status', 'primary_type', 'types_json', 'opening_hours_json', 'raw_json', 'type_label', 'editorial_summary', 'reviews_json', 'last_review_at'] as const;
+  'business_status', 'primary_type', 'types_json', 'opening_hours_json', 'raw_json', 'type_label', 'editorial_summary', 'reviews_json', 'last_review_at', 'photo_count'] as const;
 
 export function upsertLead(input: LeadInput): { id: number; inserted: boolean } {
   const now = isoNow();
@@ -92,8 +92,11 @@ export function leadsNeedingAudit(opts: { query?: string; slug?: string; force?:
   if (opts.slug) { where.push('l.slug = ?'); params.push(opts.slug); }
   if (opts.query) { where.push('l.source_query = ?'); params.push(opts.query); }
   if (!opts.force) {
-    where.push(`(a.lead_id IS NULL OR a.audited_at < ?)`);
+    // Live sites change often and are cheap to re-check. Dead, broken and missing sites are re-checked monthly:
+    // a fixed site is a cooled lead, a newly dead one is a hot lead.
+    where.push(`(a.lead_id IS NULL OR a.audited_at < CASE WHEN a.website_status = 'live' THEN ? ELSE ? END)`);
     params.push(new Date(Date.now() - opts.freshDays * 86_400_000).toISOString());
+    params.push(new Date(Date.now() - Math.max(opts.freshDays, 30) * 86_400_000).toISOString());
   }
   const sql = `SELECT l.* FROM leads l LEFT JOIN audits a ON a.lead_id = l.id ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY l.id`;
   return d().prepare(sql).all(...(params as never[])) as unknown as LeadRow[];

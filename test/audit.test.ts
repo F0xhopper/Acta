@@ -9,7 +9,7 @@ const lead = (url: string): LeadRow => ({
   id: 1, slug: 't', place_id: 'p', name: 'Acme', category_key: 'plumber', category_raw: 'plumbers', area: 'X', source_query: 'q', address: null, postcode: null,
   outward_code: 'B1', lat: null, lng: null, phone_e164: '+441211234567', website_url: url, google_maps_url: null, rating: 5, review_count: 20, business_status: 'OPERATIONAL',
   primary_type: null, types_json: null, opening_hours_json: null, is_chain: 0, raw_json: null, discovered_at: '', last_seen_at: '',
-  type_label: null, editorial_summary: null, reviews_json: null, last_review_at: null,
+  type_label: null, editorial_summary: null, reviews_json: null, last_review_at: null, photo_count: null,
 });
 const page = (head: string, body: string) => `<!doctype html><html><head>${head}</head><body>${body}${'<p>Real content about plumbing services in Birmingham.</p>'.repeat(10)}</body></html>`;
 const fetched = (over: Partial<FetchResult>): FetchResult => ({

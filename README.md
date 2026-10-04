@@ -151,6 +151,28 @@ Needs: the Claude Code CLI on this machine, `gh` logged in, and for deploys a Ve
 
 **Cost and limits.** The design agent runs on your Claude subscription by default. A full build is 100 to 200 turns and can use most of a session's allowance, and if the limit is hit the build pauses with the work committed. Run the same `build` command after the reset and it continues from the artefacts in `acta/`. To run builds without touching the subscription, set `ACTA_AGENT_API_KEY` in `.env` and they bill to the API instead, at roughly $5 to $15 per site.
 
+## Running it automatically
+
+Discovery and picking run themselves. You review on Wednesday.
+
+```
+pnpm pipeline doctor                 # every prerequisite, and whether the loop is allowed to run
+pnpm pipeline sweep [--dry-run]      # the searches that are due this week, best yield first, inside the request budget
+pnpm pipeline searches               # every configured search with its runs, yield and retirement
+pnpm pipeline pick --auto [--dry-run] [--max 10]   # apply the rule in config/pick.yaml, printing every pick and every skip with its reason
+pnpm pipeline pick <slug> [<slug>...] / unpick <slug>
+pnpm pipeline week [--dry-run]       # Sunday: sweep, audit, score, yields, leaderboard, pick. Writes out/REVIEW.md
+pnpm pipeline build --picked --max 5 # overnight: build the picked queue in pick-score order
+pnpm pipeline day                    # weekdays: tear down stale previews, refresh the leaderboard, list the review queue
+pnpm pipeline schedule install       # launchd jobs: week Sunday 22:00, builds Mon and Tue 01:00, day weekdays 09:15
+```
+
+**How the sweep chooses.** `config/sweep.yaml` lists trades by area group. Each one expands to a search per area. A search is due when it has never run or its last run is older than the revisit period (42 days). Never-run searches go first, interleaved across trades so a week samples several, then known searches by yield. The run stops at the request budget (30), and cached results cost nothing. A search whose yield (tier A plus B per ten found) stays under 1.0 for two runs is retired. Dead and broken sites are re-audited monthly, live ones every two weeks, because a status change in either direction changes the lead.
+
+**How the picker chooses.** Hard filters first: tier A, twenty or more reviews, a review in the last year, a configured category, three or more Google photos (unknown allowed until the next sweep fills them in), a phone or a limited-company match, an audit under 30 days old. Then a pick score: 60 percent the lead score, 40 percent buildability (photos, a live site to take the brand from, a description, reviews with text, hours), plus a bonus for limited companies because they can be emailed. Then caps: ten a week, two per trade per area, one walk-in trade per area. Just before committing, each pick is checked again: the Google listing must still exist and the site is fetched once more, so a business that fixed its site or vanished from Google is dropped with the reason. Once fifty pitches have outcomes, categories with better reply rates get a small, printed multiplier.
+
+Everything the sweep and the picker decide is printed with a reason, and both have `--dry-run`. `week` refuses to start if `doctor` finds a required prerequisite missing.
+
 ## Getting good results
 
 - **Narrow area, specific trade.** "Personal trainers in Kings Heath" beats "gym trainer coach birmingham". Whole-city searches hit Google's 60-result cap and return the biggest firms, who least need you.

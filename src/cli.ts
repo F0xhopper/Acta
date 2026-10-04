@@ -22,6 +22,14 @@ import { getBuild, listBuilds, recentEvents } from './build/queries.js';
 import { loadGather, loadResearch } from './build/apis.js';
 import { buildDir } from './build/log.js';
 import { join } from 'node:path';
+import { runSweep, sweepStates, updateYields } from './sweep/index.js';
+import { planSweep } from './sweep/plan.js';
+import { loadSweep } from './sweep/config.js';
+import { autoPick, explain, pickManual, pickedQueue, unpick } from './pick/index.js';
+import { runWeek } from './loop/week.js';
+import { runDay } from './loop/day.js';
+import { installSchedule, scheduleStatus, uninstallSchedule } from './loop/schedule.js';
+import { doctor, formatDoctor } from './doctor.js';
 
 const program = new Command();
 program.name('pipeline').description('Find Birmingham businesses that need a website, audit them, score them, shortlist them.');
@@ -170,7 +178,9 @@ function printOutcome(r: { slug: string; name: string; state: string; repoUrl: s
 }
 
 program.command('build').description('Build a site for a business: gather its brand and facts, create a repo, design it, test it, deploy a preview')
-  .argument('<business>', 'business name, or a lead slug from a shortlist')
+  .argument('[business]', 'business name, or a lead slug from a shortlist')
+  .option('--picked', 'build the picked queue in pick-score order')
+  .option('--max <n>', 'with --picked: how many to build', '5')
   .option('--sandbox', 'no GitHub repo, no Vercel; everything stays under sites/')
   .option('--no-agent', 'skip the design agent (infrastructure and placeholder only)')
   .option('--no-research', 'skip Pinterest and competitor research')
@@ -179,11 +189,72 @@ program.command('build').description('Build a site for a business: gather its br
   .option('--max-turns <n>').option('--max-minutes <n>')
   .option('--force', 're-gather, re-copy the starter and rebuild from the start')
   .option('--dry-run', 'show the steps that would run')
-  .action(async (business: string, o) => {
+  .action(async (business: string | undefined, o) => {
+    if (o.picked) {
+      const queue = pickedQueue().slice(0, Number(o.max));
+      if (!queue.length) { console.log('Picked queue is empty. Run: pnpm pipeline pick --auto'); return; }
+      const perDay = envInt('BUILD_MAX_PER_DAY', 10);
+      for (const q of queue.slice(0, perDay)) {
+        const r = await buildLead(q.slug, buildOpts(o, budget()));
+        printOutcome(r);
+        if (r.error) process.exitCode = 1;
+      }
+      return;
+    }
+    if (!business) { console.error('Give a business name or slug, or --picked'); process.exitCode = 1; return; }
     const r = await buildLead(business, buildOpts(o, budget()));
     printOutcome(r);
     if (r.error) process.exitCode = 1;
   });
+
+// ---------- discovery sweep and picking ----------
+
+program.command('sweep').description('Run the discovery searches that are due, best yield first, within the request budget (config/sweep.yaml)')
+  .option('--dry-run', 'show the plan only').option('--budget <n>', 'override the request budget')
+  .action(async (o) => {
+    const r = await runSweep({ dryRun: o.dryRun, budget: o.budget ? Number(o.budget) : undefined });
+    console.log(`${o.dryRun ? 'Would run' : 'Ran'} ${r.plan.run.length} searches, ${r.plan.estimatedRequests}/${r.plan.budget} requests${r.stoppedEarly ? `, stopped early: ${r.stoppedEarly}` : ''}`);
+    for (const x of o.dryRun ? r.plan.run.map((p) => ({ query: p.query, found: p.cost, inserted: 0 })) : r.ran) console.log(`  ${x.query}${o.dryRun ? ` (${x.found} requests)` : `: ${x.found} found, ${x.inserted} new`}`);
+    if (r.plan.skipped.length) { console.log(`Skipped ${r.plan.skipped.length}:`); r.plan.skipped.slice(0, 12).forEach((x) => console.log(`  ${x.query}: ${x.why}`)); }
+    if (!o.dryRun) { const y = updateYields(); if (y.retired.length) console.log(`Retired: ${y.retired.join(', ')}`); }
+  });
+
+program.command('searches').description('Every configured search with its runs, yield and retirement').action(() => {
+  for (const s of sweepStates()) console.log(`${(s.yield ?? 0).toFixed(1).padStart(5)}  runs ${String(s.runs).padStart(2)}  ${s.retired ? 'RETIRED ' : ''}${s.query}${s.lastRunAt ? `  (last ${s.lastRunAt.slice(0, 10)})` : ''}`);
+  const plan = planSweep(sweepStates(), loadSweep());
+  console.log(`\nNext sweep would run ${plan.run.length}: ${plan.run.map((r) => r.query).join(' | ')}`);
+});
+
+program.command('pick').description('Pick leads to build: by slug, or --auto for the rule in config/pick.yaml')
+  .argument('[slugs...]').option('--auto', 'apply the rule').option('--max <n>').option('--dry-run').option('--no-recheck', 'skip the fresh look at each site before picking')
+  .action(async (slugs: string[], o) => {
+    if (o.auto) { console.log(explain(await autoPick({ max: o.max ? Number(o.max) : undefined, dryRun: o.dryRun, recheck: o.recheck }))); return; }
+    if (!slugs.length) { console.error('Give slugs, or --auto'); process.exitCode = 1; return; }
+    const r = pickManual(slugs);
+    console.log(`picked: ${r.ok.join(', ') || 'none'}${r.missing.length ? `\nnot found: ${r.missing.join(', ')}` : ''}`);
+  });
+
+program.command('unpick').argument('<slug>').action((slug: string) => { console.log(unpick(slug)); });
+
+program.command('week').description('The Sunday job: sweep, audit, score, leaderboard, pick. Writes out/REVIEW.md')
+  .option('--dry-run').option('--max <n>', 'picks').option('--skip-sweep')
+  .action(async (o) => { console.log(await runWeek({ dryRun: o.dryRun, max: o.max ? Number(o.max) : undefined, skipSweep: o.skipSweep })); });
+
+program.command('day').description('The weekday job: tear down stale previews, refresh the leaderboard, list the review queue')
+  .option('--dry-run').action(async (o) => { console.log(await runDay({ dryRun: o.dryRun })); });
+
+program.command('schedule').description('Install, remove or show the launchd jobs for week, builds and day').argument('<action>', 'install | uninstall | status')
+  .option('--jobs <list>', 'install only these: week,day,builds')
+  .action(async (action: string, o) => {
+    const out = action === 'install' ? await installSchedule(o.jobs ? String(o.jobs).split(',') : undefined) : action === 'uninstall' ? await uninstallSchedule() : await scheduleStatus();
+    out.forEach((l) => console.log(`  ${l}`));
+  });
+
+program.command('doctor').description('Check every prerequisite the pipeline needs').action(async () => {
+  const checks = await doctor();
+  console.log(formatDoctor(checks));
+  if (!checks.filter((c) => c.required).every((c) => c.ok)) process.exitCode = 1;
+});
 
 program.command('gather').description('Gather brand and facts for a business without building').argument('<business>').option('--force')
   .action(async (business: string, o) => {

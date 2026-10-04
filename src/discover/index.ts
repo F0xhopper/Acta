@@ -44,7 +44,7 @@ export function placeToLead(place: PlaceResult, parsed: ParsedQuery): LeadInput 
     primary_type: place.primaryType ?? null,
     types_json: place.types ? JSON.stringify(place.types) : null,
     opening_hours_json: place.regularOpeningHours?.weekdayDescriptions ? JSON.stringify(place.regularOpeningHours.weekdayDescriptions) : null,
-    raw_json: JSON.stringify({ ...place, reviews: undefined }),
+    raw_json: JSON.stringify({ ...place, reviews: undefined, photos: undefined }),
     type_label: place.primaryTypeDisplayName?.text ?? null,
     editorial_summary: place.editorialSummary?.text ?? null,
     reviews_json: place.reviews?.length ? JSON.stringify(place.reviews.map((r) => ({
@@ -55,6 +55,7 @@ export function placeToLead(place: PlaceResult, parsed: ParsedQuery): LeadInput 
       author: r.authorAttribution?.displayName ?? null,
     }))) : null,
     last_review_at: place.reviews?.map((r) => r.publishTime ?? '').filter(Boolean).sort().pop() ?? null,
+    photo_count: place.photos ? place.photos.length : null,
   };
 }
 

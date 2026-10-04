@@ -1,0 +1,28 @@
+# The auto-picker. Hard filters first, then a pick score, then diversity caps. Everything it decides is printed.
+filters:
+  tiers: [A]
+  min_reviews: 20
+  max_review_age_days: 365
+  min_photos: 3              # Google photos on the listing; unknown counts as 0 unless allow_unknown_photos
+  allow_unknown_photos: true # true until every lead has been re-discovered with photo counts
+  audit_fresh_days: 30       # re-check anything older than this before picking
+  require_contact: true      # a phone number, or a limited-company match (email route)
+
+score:
+  lead_weight: 0.6           # the lead's total score
+  buildability_weight: 0.4
+  ltd_bonus: 5               # limited companies can be emailed without you
+
+diversity:
+  max_per_week: 10
+  max_per_trade_area: 2      # same category in the same area per week
+  max_walk_in_per_area: 1    # walk-in trades: one per high street per week
+
+buildability:                # 0-100, what we have to build from
+  photos_8: 40
+  photos_3: 25
+  photos_1: 10
+  has_live_site: 15          # a site to take logo and colours from
+  has_description: 15
+  reviews_with_text_3: 20
+  hours_listed: 10
