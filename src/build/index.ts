@@ -96,7 +96,7 @@ async function stepAgent(ctx: Ctx, prompt = '/build') {
   }
   if (!agentAvailable()) throw new Error('claude CLI not found on PATH');
   const resultPath = join(buildDir(ctx.slug), `agent-${prompt.replace('/', '')}-${Date.now()}.json`);
-  const r = await runAgent(ctx.dir, { prompt, maxTurns: ctx.opts.maxTurns ?? envInt('BUILD_MAX_TURNS', 200), maxMinutes: ctx.opts.maxMinutes ?? envInt('BUILD_MAX_MINUTES', 150), resultPath, log: (m) => ctx.log.info('agent', m) });
+  const r = await runAgent(ctx.dir, { prompt, maxTurns: ctx.opts.maxTurns ?? envInt('BUILD_MAX_TURNS', 250), maxMinutes: ctx.opts.maxMinutes ?? envInt('BUILD_MAX_MINUTES', 180), resultPath, log: (m) => ctx.log.info('agent', m) });
   const left = await commitAll(ctx.dir, 'wip: changes left uncommitted by the agent');
   if (left) ctx.log.warn('agent', 'committed changes the agent left uncommitted');
   updateBuild(ctx.full.lead.id, { agent_result_path: resultPath, agent_turns: r.turns, agent_seconds: r.seconds, agent_cost_usd: r.costUsd, head_sha: await headSha(ctx.dir), built_at: new Date().toISOString() });
