@@ -16,14 +16,15 @@ Check what already exists and skip finished phases:
 | Exists | Skip |
 |---|---|
 | `acta/research/board.md` has a `## Designer notes` section | phase 1 |
-| `acta/brief.md` and `src/theme.ts` has no `#1f2937` primary | phase 2 |
-| `src/content/site.ts` has no `TODO copywriter` | phase 3 |
-| `src/components/` has files and no `PLACEHOLDER` comment remains under `src/app/` | phase 4 is at least started; read the build log if there is one and continue |
-| `acta/qa/gate.json` has `"pass": true` | phase 5 |
+| `acta/plan.md` has a `## Photo audit` section covering every photo | phase 2 |
+| `acta/brief.md` and `src/theme.ts` has no `#1f2937` primary | phase 3 |
+| `src/content/site.ts` has no `TODO copywriter` | phase 4 |
+| `src/components/` has files and no `PLACEHOLDER` comment remains under `src/app/` | phase 5 is at least started; read the build log if there is one and continue |
+| `acta/qa/gate.json` has `"pass": true` | phase 6 |
 
 ## Budget
 
-The whole build should reach phase 4 inside 25 turns and finish inside 120. Reading is cheap, thinking out loud is not. Do not re-read files you have already read. Do not narrate.
+The whole build should reach phase 5 inside 35 turns and finish inside 120. Reading is cheap, thinking out loud is not. Do not re-read files you have already read. Do not narrate.
 
 ## Phase 1: look, briefly (append `## Designer notes` to `acta/research/board.md`)
 
@@ -35,19 +36,25 @@ The whole build should reach phase 4 inside 25 turns and finish inside 120. Read
 
 Do not copy anything from any reference. Not text, not images, not a logo, not a distinctive illustration.
 
-## Phase 2: brief and theme (delegate to the `designer` subagent)
+## Phase 2: plan (delegate to the `planner` subagent)
 
-Ask the designer to write `acta/brief.md` and fill `src/theme.ts` and `src/app/fonts.ts`. Read the brief when it returns. It must state, section by section, what the site is, and it must say what makes it unlike a generic site of this type. If it doesn't, send it back once with that instruction.
+Ask the planner to write `acta/plan.md`. This is where the site is thought through: every page and section with its content and evidence, the photo audit, the gallery order, the features, the gaps. `acta/site-type.json` says what this kind of site must contain; the plan says what this business's site contains.
+
+Read the plan when it returns and check it: every route in `acta/site-type.json` is covered, every photo in `public/brand/photos/` has a row in the photo audit, the hero is a strong photo, nothing marked drop is used anywhere, and every section names its evidence. Send it back once if not. Commit.
+
+## Phase 3: brief and theme (delegate to the `designer` subagent)
+
+Ask the designer to write `acta/brief.md` and fill `src/theme.ts` and `src/app/fonts.ts`, designing the plan: the brief decides how each planned section looks, not what it says. Read the brief when it returns. It must state, section by section, what the site is, and it must say what makes it unlike a generic site of this type. If it doesn't, send it back once with that instruction.
 
 Run `pnpm typecheck` and `pnpm test`. The contrast test must pass on the new theme. Commit.
 
-## Phase 3: content (delegate to the `copywriter` subagent)
+## Phase 4: content (delegate to the `copywriter` subagent)
 
-Ask the copywriter to write `acta/content.md` and update `src/content/site.ts`. When it returns, check `site.ts` against `acta/facts.json` yourself: every accreditation, year, guarantee and "same day" claim must be in facts. Remove anything that isn't. No `TODO` may remain. Run `pnpm typecheck` and `pnpm test`. Commit.
+Ask the copywriter to write `acta/content.md` and update `src/content/site.ts`, section by section from the plan. Photos in `site.photos` are only the ones the plan keeps, in the plan's order. When it returns, check `site.ts` against `acta/facts.json` yourself: every accreditation, year, guarantee and "same day" claim must be in facts. Remove anything that isn't. No `TODO` may remain. Run `pnpm typecheck` and `pnpm test`. Commit.
 
-## Phase 4: design and build
+## Phase 5: design and build
 
-Write the site. Components go in `src/components/`, one file per section, named for what they are on this site (not "Hero1"). Replace the markup of every route under `src/app/` completely; remove every `PLACEHOLDER` comment. Keep each route's data flow (`site.ts` in, metadata out) and keep the contact form wired to `submitContact` with the honeypot field.
+Build the plan. Every page and section in `acta/plan.md` exists, in the planned order, with the planned photo. Components go in `src/components/`, one file per section, named for what they are on this site (not "Hero1"). Replace the markup of every route under `src/app/` completely; remove every `PLACEHOLDER` comment. Keep each route's data flow (`site.ts` in, metadata out) and keep the contact form wired to `submitContact` with the honeypot field.
 
 Requirements, all of them:
 - Mobile first. Sticky call bar on phones with `tel:` (and WhatsApp when `site.business.whatsapp` is set).
@@ -55,25 +62,28 @@ Requirements, all of them:
 - Their photos from `site.photos` in the hero and at least one other section, when they have any. No photos: use the brief's plan, never a random image from the web. Put named placeholders in `public/images/` with a `README.md` listing what is needed, and say so in the build log.
 - Every service and area page designed, not just the home page. They share the theme, they are not clones of each other.
 - Reviews rendered verbatim with first name and date.
-- Opening hours, address and a map link in the footer or contact section, from `site.business`.
+- Opening hours, address and a map in the Find us or contact section, from `site.business`: use `MapEmbed` from `src/kit/map` (a tap-to-load facade, so it costs nothing until opened). Style the facade to the design.
+- When the plan has `/gallery`: a designed portfolio grid in the plan's order with an accessible tap-to-enlarge lightbox (Escape closes, arrows move, focus returns), linked from the nav, the mobile menu, the footer and the home page's work strip.
+- Every page except contact carries at least one real photo from the plan, when the plan keeps any.
 - Semantic HTML, real headings in order, focus visible (the kit handles focus styles), images with alt text, tap targets at least 44px on mobile.
 - Use `next/image` for photos with sizes set, so Lighthouse performance stays above 90 on mobile.
 
 Work in passes: structure, then type and spacing, then colour, then imagery, then motion. Run `pnpm typecheck` after each pass and `pnpm gate:fast` after the structure pass and again at the end. Commit after each pass.
 
-## Phase 5: QA loop (up to three rounds)
+## Phase 6: QA loop (up to three rounds)
 
 1. `pnpm shots`.
-2. Ask the `critic` subagent to check `acta/qa/*.png` against the brief. It returns a numbered list of fixes.
+2. Ask the `critic` subagent to check `acta/qa/*.png` against the plan and the brief: missing planned sections, dropped photos in use, weak photo choices, hierarchy. It returns a numbered list of fixes.
 3. Fix everything on the list. Re-shoot. Ask again.
 4. Stop when the critic says `No fixes.` or after three rounds.
 5. `pnpm gate` (with Lighthouse). If a gate fails, fix it and run it again. You may not finish with a failing gate; the Stop hook will send you back.
 
-## Phase 6: hand over
+## Phase 7: hand over
 
 Write `acta/build-log.md`:
 - The direction chosen and why, in three lines.
 - Every decision that a reviewer might question (a colour shade adjusted for contrast, a photo cropped, a service merged, a logo rejected).
+- The plan's content gaps, as questions for the owner.
 - What you could not resolve: missing logo, no photos, a claim you left out because facts didn't support it, a gate you had to work around.
 - Timing: which phase took longest.
 

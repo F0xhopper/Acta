@@ -1,0 +1,146 @@
+# What a site has to be, by kind of business. The pipeline writes the matching type into each site repo as
+# acta/site-type.json; the planner turns it into acta/plan.md for that business; the gates enforce the required
+# pages and features. Types say WHAT the site must do and contain, never how it should look: every design is bespoke.
+#
+# Fields
+#   categories        which category keys (config/categories.yaml) use this type
+#   goal              the one job the site does for this kind of business
+#   visitor           who arrives and what they want in the first five seconds
+#   pages             required routes with the purpose of each; the planner may add more, never fewer
+#   home              home page sections in priority order, each with its intent
+#   features          functional must-haves, checked by gates where they can be
+#   imagery           what the photos must show and how many
+#   tone              how the copy should sound
+#   avoid             what makes sites of this type generic or untrustworthy
+#   pinterest         search phrases; {palette} and {mood} are filled from the brand
+
+types:
+  visual_craft:
+    categories: [barber, beauty, tattoo, pet, photographer, florist]
+    goal: "Turn a phone visitor into a booking or a walk-in by showing the work. The portfolio is the sales pitch."
+    visitor: "Someone nearby on a phone who wants to see the quality of the cuts or work, the prices, whether they can walk in, and how to get there."
+    pages:
+      - { route: "/", purpose: "The shop in one scroll: the work, the price range, the hours, one tap to call or book" }
+      - { route: "/gallery", purpose: "The portfolio: every usable photo, grouped by style, tap to enlarge" }
+      - { route: "/services/[slug]", purpose: "One per service: what it is, who it suits, how long, photo of that exact service" }
+      - { route: "/about", purpose: "The people and the room: who cuts, the vibe, what reviewers keep saying" }
+      - { route: "/contact", purpose: "Find us: map, address, hours, call, WhatsApp, walk-in policy" }
+    home:
+      - { section: hero, intent: "The best photo of the work or the room, the name, one line, call/book button, rating, all above the fold on a phone" }
+      - { section: work_strip, intent: "3-6 photos of the work linking to /gallery, right after the hero" }
+      - { section: services, intent: "Services as photo cards with a price-from where known" }
+      - { section: hours, intent: "Today's hours and open/closed status, late nights called out" }
+      - { section: reviews, intent: "Three to five verbatim reviews with first name, plus the total" }
+      - { section: find_us, intent: "Map, address, directions link" }
+    features: [gallery, lightbox, map, sticky_call_bar, hours_status, reviews, booking_link_if_known, instagram_link_if_known]
+    imagery: "Work first: cuts, finished looks, before-and-after. Then the room and the chair. 8+ photos ideal. Never photos of clutter, doorsteps, skin conditions, or other businesses."
+    tone: "Confident, local, a bit of swagger. Short lines. Talk about the cut, not the business."
+    avoid: [stock photos of models, generic "welcome to our website", long paragraphs, hiding prices, tiny photos]
+    pinterest:
+      - "{category} website design {mood}"
+      - "{category} portfolio gallery website"
+      - "{category} landing page {palette}"
+      - "modern {category} shop branding"
+
+  trusted_trade:
+    categories: [plumber, electrician, roofer, builder, landscaper, decorator, fitter, cleaner, window_cleaner, locksmith, removals, garage]
+    goal: "Turn an urgent or planned job into a call or a quote request by proving reliability and local coverage."
+    visitor: "A homeowner with a problem or a project, often stressed, checking whether this firm is legitimate, covers their area and can come soon."
+    pages:
+      - { route: "/", purpose: "Trust and contact in one scroll: what they fix, where they cover, proof, call now" }
+      - { route: "/services/[slug]", purpose: "One per service: the problem it solves, how the job goes, evidence it's done well" }
+      - { route: "/areas/[slug]", purpose: "One per area served: local proof, response time, call" }
+      - { route: "/gallery", purpose: "Recent jobs: before and after where available", when: "photos >= 4" }
+      - { route: "/about", purpose: "Who does the work, accreditations from facts only, how long trading" }
+      - { route: "/contact", purpose: "Quote form, call, WhatsApp, map, hours, areas list" }
+    home:
+      - { section: hero, intent: "What they do and where, call button, rating, emergency line if they do call-outs" }
+      - { section: trust_strip, intent: "Rating, review count, evidenced accreditations, years trading if evidenced" }
+      - { section: services, intent: "Services as clear cards, each linking to its page" }
+      - { section: areas, intent: "Areas covered as links to area pages" }
+      - { section: recent_work, intent: "Job photos when available, linking to /gallery" }
+      - { section: reviews, intent: "Reviews that mention reliability, tidiness, price" }
+      - { section: find_us, intent: "Map, address or base area, hours" }
+    features: [quote_form, map, sticky_call_bar, reviews, areas_pages, gallery_if_photos, emergency_banner_if_call_outs]
+    imagery: "Real jobs over portraits: finished bathrooms, boilers, roofs, gardens. Van and team if available. Never stock tradespeople."
+    tone: "Plain, reassuring, specific. Say what happens when they call."
+    avoid: [stock hard-hat photos, unevidenced accreditations, vague "quality service", walls of text]
+    pinterest:
+      - "{category} website design"
+      - "trades website hero {palette}"
+      - "home services landing page {mood}"
+
+  hospitality:
+    categories: [cafe, restaurant, takeaway]
+    goal: "Get people through the door or ordering: menu, hours, location, atmosphere."
+    visitor: "Someone hungry nearby deciding now, or planning a visit, who wants the menu, the hours and the vibe."
+    pages:
+      - { route: "/", purpose: "Appetite in one scroll: food photos, today's hours, menu highlights, order/visit" }
+      - { route: "/menu", purpose: "The menu as it is on the facts, with prices where known" }
+      - { route: "/gallery", purpose: "Food and the room" }
+      - { route: "/about", purpose: "The people and the story, from facts and reviews" }
+      - { route: "/contact", purpose: "Map, hours, call, order links, bookings" }
+    home:
+      - { section: hero, intent: "The best food or room photo, name, open status, order or directions" }
+      - { section: menu_highlights, intent: "Dishes reviewers mention, with photos" }
+      - { section: hours, intent: "Open now and today's hours" }
+      - { section: gallery_strip, intent: "Food and room photos linking to /gallery" }
+      - { section: reviews, intent: "Verbatim reviews about the food" }
+      - { section: find_us, intent: "Map and address" }
+    features: [gallery, lightbox, map, hours_status, menu_page, order_link_if_known, reviews]
+    imagery: "Food close-ups, the counter, the room busy. 8+ photos ideal."
+    tone: "Warm, sensory, short."
+    avoid: [stock food, PDF menus, autoplay video]
+    pinterest:
+      - "{category} website design {mood}"
+      - "{category} menu web design"
+      - "restaurant landing page {palette}"
+
+  professional:
+    categories: [dentist, accountant, solicitor, physio, estate_agent, vet, tutor, childcare, driving_school]
+    goal: "Earn trust and an enquiry: credentials, clear services and prices, an easy first step."
+    visitor: "Someone comparing a few providers carefully, looking for credibility, clear pricing and how to start."
+    pages:
+      - { route: "/", purpose: "Credibility and the first step: who they help, how, proof, book or enquire" }
+      - { route: "/services/[slug]", purpose: "One per service: who it's for, what's involved, prices from if known" }
+      - { route: "/about", purpose: "The team and credentials, from facts only" }
+      - { route: "/contact", purpose: "Enquiry form, map, hours, call" }
+    home:
+      - { section: hero, intent: "Who they help and the first step, rating" }
+      - { section: services, intent: "Services with prices from where known" }
+      - { section: proof, intent: "Reviews and evidenced credentials" }
+      - { section: process, intent: "How it works in three steps" }
+      - { section: find_us, intent: "Map and hours" }
+    features: [enquiry_form, map, reviews, sticky_call_bar]
+    imagery: "The real premises and team. Calm, uncluttered."
+    tone: "Clear, calm, expert, never salesy."
+    avoid: [stock handshakes, jargon, unevidenced credentials]
+    pinterest:
+      - "{category} website design {mood}"
+      - "professional services website {palette}"
+
+  fitness:
+    categories: [personal_trainer, life_coach, coach_hire]
+    goal: "Get a first session or discovery call booked by showing results and the coach."
+    visitor: "Someone motivated but uncertain, wanting proof it works, the price, and that the coach is right for them."
+    pages:
+      - { route: "/", purpose: "Results and the coach in one scroll, then book" }
+      - { route: "/services/[slug]", purpose: "Packages: what's included, who it suits, price from" }
+      - { route: "/gallery", purpose: "The space, sessions, results", when: "photos >= 4" }
+      - { route: "/about", purpose: "The coach, credentials from facts only" }
+      - { route: "/contact", purpose: "Booking or enquiry, map, hours" }
+    home:
+      - { section: hero, intent: "Outcome-led headline, coach or session photo, book button, rating" }
+      - { section: results, intent: "Reviews about results, verbatim" }
+      - { section: packages, intent: "Packages with prices from where known" }
+      - { section: coach, intent: "Who the coach is" }
+      - { section: find_us, intent: "Map and hours" }
+    features: [map, reviews, sticky_call_bar, booking_link_if_known, gallery_if_photos]
+    imagery: "Real sessions and the space, energy, never stock gym models."
+    tone: "Direct, encouraging, no hype."
+    avoid: [stock fitness models, before-after without consent, hype]
+    pinterest:
+      - "personal trainer website design {mood}"
+      - "fitness coach landing page {palette}"
+
+default: trusted_trade

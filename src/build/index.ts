@@ -23,6 +23,8 @@ import { resolveLead } from './resolve.js';
 import { siteContentSource } from './site-content.js';
 import { STEP_TARGET, STEPS, stepsFrom, type Step } from './state.js';
 import { checkUniqueness } from './unique.js';
+import { resolveSiteType } from './site-type.js';
+import { colourWord } from './gather/colours.js';
 import { run } from './exec.js';
 
 export interface BuildOpts {
@@ -65,6 +67,15 @@ async function stepRepo(ctx: Ctx) {
   const brandInRepo = BrandSchema.parse(readJson(join(dir, SITE_PATHS.brand)));
   const factsInRepo = FactsSchema.parse(readJson(join(dir, SITE_PATHS.facts)));
   writeFile(dir, SITE_PATHS.site, siteContentSource(brandInRepo, factsInRepo));
+  const hints = brandInRepo.tone_hints;
+  const siteType = resolveSiteType(ctx.full.lead.category_key, {
+    photos: brandInRepo.photos.length,
+    categoryLabel: factsInRepo.business.category_label,
+    paletteWord: colourWord(brandInRepo.palette.primary) ?? '',
+    mood: hints.some((h) => /modern|luxury/.test(h)) ? 'modern' : hints.some((h) => /traditional|family/.test(h)) ? 'traditional' : 'bold',
+  });
+  writeFile(dir, 'acta/site-type.json', JSON.stringify(siteType, null, 2));
+  ctx.log.info('repo', `site type ${siteType.name}: ${siteType.pages.map((p) => p.route).join(' ')}`);
   ctx.log.info('repo', `starter copied to ${dir}, brand and facts seeded`);
   await installDeps(dir);
   await ensureGit(dir);
@@ -83,7 +94,9 @@ async function stepResearch(ctx: Ctx) {
   const facts = FactsSchema.parse(readJson(join(ctx.dir, SITE_PATHS.facts)));
   const api = await loadResearch();
   const sessionPath = join(buildDir('_sessions'), 'pinterest.json');
-  const r = await api.researchLead(brand, facts, join(ctx.dir, SITE_PATHS.research), { sessionPath, log: (m) => ctx.log.info('research', m) });
+  const typeFile = join(ctx.dir, 'acta/site-type.json');
+  const queries = existsSync(typeFile) ? (readJson<{ pinterest: string[] }>(typeFile).pinterest ?? []) : [];
+  const r = await api.researchLead(brand, facts, join(ctx.dir, SITE_PATHS.research), { sessionPath, queries, log: (m) => ctx.log.info('research', m) });
   ctx.log.info('research', `${r.pins} pins from ${r.queries.length} searches${r.fallback ? ' (Pinterest unavailable, used fallback)' : ''} -> ${r.boardPath}`);
   updateBuild(ctx.full.lead.id, { research_fallback: r.fallback ? 1 : 0 });
   await commitAll(ctx.dir, 'chore: research board');
@@ -114,7 +127,7 @@ async function stepAgent(ctx: Ctx, prompt = '/build') {
 /** With no agent there is no design, so the two gates that judge the design become warnings. */
 function tolerateDesignGates(ctx: Ctx, g: Awaited<ReturnType<typeof runGates>>) {
   if (ctx.opts.agent !== false || !g.report) return g;
-  const design = new Set(['brand', 'images']);
+  const design = new Set(['brand', 'images', 'pages', 'map', 'plan']);
   const failing = g.failing.filter((f) => !design.has(f.split(/[ (:]/)[0]));
   const tolerated = g.failing.filter((f) => design.has(f.split(/[ (:]/)[0]));
   for (const t of tolerated) ctx.log.warn('gate', `tolerated with --no-agent: ${t}`);

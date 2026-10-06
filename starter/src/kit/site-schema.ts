@@ -16,6 +16,9 @@ export const SiteSchema = z.object({
     area: z.string(),
     city: z.string(),
     maps_url: z.string().url().nullable(),
+    place_id: z.string().nullable().optional(),   // Google place id, for the map embed
+    lat: z.number().nullable().optional(),
+    lng: z.number().nullable().optional(),
     hours: z.array(z.string()),                 // "Monday: 9:00 am – 5:00 pm"
     rating: z.number().min(0).max(5).nullable(),
     review_count: z.number().int().min(0).nullable(),

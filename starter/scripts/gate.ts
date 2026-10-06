@@ -4,7 +4,7 @@
 //      pnpm gate --ci       same gates, flags the report as CI
 //      pnpm gate --url URL  check a running site instead of building
 import { execSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import * as cheerio from 'cheerio';
 import { chromium } from 'playwright';
@@ -23,6 +23,44 @@ const OUT = opt('--out') ?? 'acta/qa/gate.json';
 const log = (s: string) => console.log(`gate: ${s}`);
 
 interface Page { path: string; status: number; html: string; text: string; headers: Headers; links: string[] }
+
+/** What this kind of site must contain, written by the pipeline from config/site-types.yaml. */
+interface SiteType { name: string; pages: { route: string; purpose: string }[]; features: string[]; home: { section: string; intent: string }[] }
+const siteType: SiteType | null = existsSync('acta/site-type.json') ? JSON.parse(readFileSync('acta/site-type.json', 'utf8')) : null;
+const requiredRoutes = () => (siteType?.pages ?? []).map((p) => p.route).filter((r) => !r.includes('['));
+
+async function pagesGate(base: string, pages: Map<string, Page>): Promise<Gate> {
+  if (!siteType) return { name: 'pages', pass: true, value: 'skipped (no acta/site-type.json)' };
+  const details: string[] = [];
+  for (const r of requiredRoutes()) {
+    const res = await fetch(base + r, { redirect: 'manual' });
+    if (res.status !== 200) details.push(`${r} returns ${res.status}; a ${siteType.name} site needs it`);
+    else if (!pages.has(r)) details.push(`${r} exists but nothing links to it from the site`);
+  }
+  return { name: 'pages', pass: details.length === 0, value: `${siteType.name}: ${requiredRoutes().join(' ')}`, details };
+}
+
+function mapGate(pages: Map<string, Page>): Gate {
+  const wants = !siteType || siteType.features.includes('map');
+  if (!wants) return { name: 'map', pass: true, value: 'not required for this site type' };
+  if (!site.business.address) return { name: 'map', pass: true, value: 'skipped (no address)' };
+  const withMap = [...pages.values()].filter((p) => p.html.includes('data-acta-map')).map((p) => p.path);
+  const details = withMap.length ? [] : ['no page uses <MapEmbed> from src/kit/map (Find us needs a map)'];
+  return { name: 'map', pass: details.length === 0, value: withMap.length ? `on ${withMap.join(', ')}` : 'missing', details };
+}
+
+/** The plan comes before the design: every required page planned, every photo reviewed. */
+function planGate(): Gate {
+  if (!siteType) return { name: 'plan', pass: true, value: 'skipped (no acta/site-type.json)' };
+  if (!existsSync('acta/plan.md')) return { name: 'plan', pass: false, value: 'missing', details: ['acta/plan.md does not exist: run the planning phase'] };
+  const plan = readFileSync('acta/plan.md', 'utf8');
+  const details: string[] = [];
+  for (const r of siteType.pages.map((p) => p.route)) if (!plan.includes(r)) details.push(`plan does not cover ${r}`);
+  const photos = existsSync('public/brand/photos') ? readdirSync('public/brand/photos').filter((f) => /\.(jpe?g|png|webp)$/i.test(f)) : [];
+  if (photos.length && !/##\s*photo audit/i.test(plan)) details.push('plan has no "## Photo audit" section');
+  for (const f of photos) if (!plan.includes(f)) details.push(`photo ${f} not reviewed in the plan's photo audit`);
+  return { name: 'plan', pass: details.length === 0, value: `${siteType.pages.length} pages, ${photos.length} photos`, details };
+}
 
 async function crawl(base: string): Promise<Map<string, Page>> {
   const pages = new Map<string, Page>();
@@ -210,7 +248,7 @@ async function previewGate(base: string, pages: Map<string, Page>): Promise<Gate
 
 async function sitemapGate(base: string): Promise<Gate> {
   const xml = await (await fetch(`${base}/sitemap.xml`)).text();
-  const want = ['/', ...site.services.map((s) => `/services/${s.slug}`), ...site.areas.map((a) => `/areas/${a.slug}`)];
+  const want = [...new Set(['/', ...requiredRoutes(), ...site.services.map((s) => `/services/${s.slug}`), ...site.areas.map((a) => `/areas/${a.slug}`)])];
   const details = want.filter((p) => !new RegExp(`<loc>[^<]*${p.replace(/[/]/g, '\\/')}<\\/loc>`).test(xml) && !(p === '/' && /<loc>[^<]*<\/loc>/.test(xml))).map((p) => `${p} missing from sitemap.xml`);
   return { name: 'sitemap', pass: details.length === 0, value: `${want.length} expected urls`, details };
 }
@@ -236,6 +274,9 @@ async function main() {
     push(reachGate(pages));
     push(await previewGate(base, pages));
     push(await sitemapGate(base));
+    push(await pagesGate(base, pages));
+    push(mapGate(pages));
+    push(planGate());
   } finally {
     server?.stop();
   }

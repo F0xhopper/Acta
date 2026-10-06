@@ -27,7 +27,7 @@ export function siteContentSource(brand: Brand, facts: Facts): string {
   const site = {
     business: {
       name: b.name, phone_e164: b.phone_e164, phone_display: b.phone_display, whatsapp: b.whatsapp, email, address: b.address, postcode: b.postcode,
-      area: b.area, city: b.city, maps_url: b.maps_url, hours: b.hours, rating: b.rating, review_count: b.review_count,
+      area: b.area, city: b.city, maps_url: b.maps_url, place_id: b.place_id ?? null, lat: b.lat ?? null, lng: b.lng ?? null, hours: b.hours, rating: b.rating, review_count: b.review_count,
     },
     copy: {
       tagline: `${label.charAt(0).toUpperCase() + label.slice(1)} in ${b.area}`,

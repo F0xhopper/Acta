@@ -4,6 +4,7 @@ import { pageMetadata } from '@/kit/seo';
 import { submitContact } from '@/kit/contact';
 import { Field } from '@/kit/a11y/Field';
 import { telHref } from '@/kit/phone';
+import { MapEmbed } from '@/kit/map';
 
 export const metadata = pageMetadata('Contact', `Get in touch with ${site.business.name}.`);
 
@@ -32,6 +33,8 @@ export default async function ContactPage(props: PageProps<'/contact'>) {
         <button type="submit">Send</button>
       </form>
       <ul>{b.hours.map((h) => <li key={h}>{h}</li>)}</ul>
+      {b.address ? <p>{b.address}</p> : null}
+      <MapEmbed business={b} label="Show the map" />
     </main>
   );
 }

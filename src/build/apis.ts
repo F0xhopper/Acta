@@ -17,7 +17,7 @@ export interface GatherApi {
 }
 export interface ResearchApi {
   pinterestLogin(sessionPath: string): Promise<void>;
-  researchLead(brand: Brand, facts: Facts, outDir: string, opts: { sessionPath: string; log?: (m: string) => void }): Promise<{ pins: number; queries: string[]; boardPath: string; fallback: boolean }>;
+  researchLead(brand: Brand, facts: Facts, outDir: string, opts: { sessionPath: string; queries?: string[]; log?: (m: string) => void }): Promise<{ pins: number; queries: string[]; boardPath: string; fallback: boolean }>;
 }
 
 export const loadGather = async (): Promise<GatherApi> => (await import('./gather/index.js')) as unknown as GatherApi;

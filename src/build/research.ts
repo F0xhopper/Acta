@@ -32,11 +32,11 @@ export function researchQueries(brand: Brand, facts: Facts): string[] {
 export interface ResearchResult { pins: number; queries: string[]; boardPath: string; fallback: boolean }
 
 /** Per-lead inspiration board: Pinterest pins (with a saved session) and competitor screenshots. Never throws. */
-export async function researchLead(brand: Brand, facts: Facts, outDir: string, opts: { sessionPath: string; log?: (m: string) => void; pinsPerQuery?: number }): Promise<ResearchResult> {
+export async function researchLead(brand: Brand, facts: Facts, outDir: string, opts: { sessionPath: string; queries?: string[]; log?: (m: string) => void; pinsPerQuery?: number }): Promise<ResearchResult> {
   const log = opts.log ?? (() => undefined);
   mkdirSync(join(outDir, 'pinterest'), { recursive: true });
   mkdirSync(join(outDir, 'competitors'), { recursive: true });
-  const queries = researchQueries(brand, facts);
+  const queries = (opts.queries?.length ? opts.queries : researchQueries(brand, facts));
   const pins: { query: string; file: string; alt: string }[] = [];
   let fallback = false;
   let reason = '';
