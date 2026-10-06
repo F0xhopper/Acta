@@ -106,6 +106,7 @@ async function stepResearch(ctx: Ctx) {
 }
 
 async function stepAgent(ctx: Ctx, prompt = '/build') {
+  await ensureGit(ctx.dir);
   if (ctx.opts.agent === false) {
     ctx.log.warn('agent', 'skipped by flag: the site keeps the unstyled placeholder design');
     writeFile(ctx.dir, SITE_PATHS.buildLog, `# Build log\n\nAgent skipped (--no-agent). Placeholder design only.\n`);

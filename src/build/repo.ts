@@ -25,12 +25,31 @@ export async function installDeps(dir: string) {
   await must('pnpm', ['install', '--prefer-offline'], { cwd: dir, timeoutMs: 10 * 60_000 });
 }
 
-export async function ensureGit(dir: string): Promise<void> {
-  if (!existsSync(join(dir, '.git'))) {
-    await git(dir, 'init', '-q', '-b', 'main');
-    await git(dir, 'config', 'user.name', 'Acta');
-    await git(dir, 'config', 'user.email', 'acta@users.noreply.github.com');
+/**
+ * Commits must be authored by you. Vercel only deploys commits on a GitHub-linked project when the author is a
+ * member of the team, so an "Acta" bot identity gets every deployment after the first one BLOCKED.
+ */
+let identity: { name: string; email: string } | null = null;
+async function gitIdentity(dir: string): Promise<{ name: string; email: string }> {
+  if (identity) return identity;
+  const get = async (k: string) => (await run('git', ['config', '--global', k], { cwd: dir })).stdout.trim();
+  let name = process.env.ACTA_GIT_NAME ?? (await get('user.name'));
+  let email = process.env.ACTA_GIT_EMAIL ?? (await get('user.email'));
+  if (!name || !email) {
+    const gh = await run('gh', ['api', 'user', '-q', '.login + " " + (.id|tostring)'], { cwd: dir });
+    const [login, id] = gh.stdout.trim().split(' ');
+    if (!name && login) name = login;
+    if (!email && login && id) email = `${id}+${login}@users.noreply.github.com`;
   }
+  if (!name || !email) throw new Error('No git identity: set git config --global user.name and user.email (they must match your Vercel account)');
+  return (identity = { name, email });
+}
+
+export async function ensureGit(dir: string): Promise<void> {
+  if (!existsSync(join(dir, '.git'))) await git(dir, 'init', '-q', '-b', 'main');
+  const id = await gitIdentity(dir);
+  await git(dir, 'config', 'user.name', id.name);
+  await git(dir, 'config', 'user.email', id.email);
 }
 
 export async function commitAll(dir: string, message: string): Promise<string | null> {
