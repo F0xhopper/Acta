@@ -12,7 +12,7 @@ One business, one site, designed from a blank page around that business's own br
 - All copy and facts the site renders live in `src/content/site.ts`, typed by `src/kit/site-schema.ts`. Components read from it. Nothing is hard-coded in a component.
 
 ## Never
-- Edit anything under `src/kit/`. It is managed by Acta.
+- Edit anything under `src/kit/`. It is managed by Acta. That includes `src/kit/brand-images.tsx`, which generates the browser icon, the iPhone icon and the link preview shown when the site is shared.
 - Copy text, images, logos or brand assets from any competitor, gallery, Pinterest pin or reference. Inspiration is layout, hierarchy, palette, mood. Nothing else.
 - Use an image that is not in `public/brand/` (theirs) or `public/images/` with a `LICENSE.md` note saying where it came from and its licence.
 - Invent a claim. No "Gas Safe", "fully insured", "20 years", "award-winning" unless `acta/facts.json` has it. The claims gate will fail the build.

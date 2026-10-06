@@ -49,6 +49,30 @@ function mapGate(pages: Map<string, Page>): Gate {
   return { name: 'map', pass: details.length === 0, value: withMap.length ? `on ${withMap.join(', ')}` : 'missing', details };
 }
 
+/** Brand icons and the link preview exist and are images; the Next.js default favicon is gone. */
+async function iconsGate(base: string, pages: Map<string, Page>): Promise<Gate> {
+  const home = pages.get('/');
+  if (!home) return { name: 'icons', pass: false, details: ['no home page'] };
+  const $ = cheerio.load(home.html);
+  const details: string[] = [];
+  const check = async (what: string, href: string | undefined) => {
+    if (!href) { details.push(`${what} missing from <head>`); return; }
+    // Absolute URLs point at the production origin (metadataBase); test the same path on the server under test.
+    const u = new URL(href, base);
+    const res = await fetch(new URL(u.pathname + u.search, base));
+    const type = res.headers.get('content-type') ?? '';
+    if (res.status !== 200) details.push(`${what} ${href} returns ${res.status}`);
+    else if (!/image|json|manifest/.test(type)) details.push(`${what} ${href} is ${type}, not an image`);
+  };
+  await check('icon', $('link[rel="icon"]').not('[href$="favicon.ico"]').first().attr('href'));
+  await check('apple-touch-icon', $('link[rel="apple-touch-icon"]').first().attr('href'));
+  await check('og:image', $('meta[property="og:image"]').first().attr('content'));
+  await check('manifest', $('link[rel="manifest"]').first().attr('href'));
+  const ico = 'src/app/favicon.ico';
+  if (existsSync(ico) && execSync(`md5 -q ${ico} 2>/dev/null || md5sum ${ico} | cut -d' ' -f1`).toString().trim() === 'c30c7d42707a47a3f4591831641e50dc') details.push('src/app/favicon.ico is the Next.js default: delete it');
+  return { name: 'icons', pass: details.length === 0, value: details.length ? 'incomplete' : 'icon, apple icon, link preview, manifest', details };
+}
+
 /** Three concepts, scored, one chosen with a reason, before the brief. */
 function conceptsGate(): Gate {
   if (!siteType) return { name: 'concepts', pass: true, value: 'skipped (no acta/site-type.json)' };
@@ -291,6 +315,7 @@ async function main() {
     push(mapGate(pages));
     push(planGate());
     push(conceptsGate());
+    push(await iconsGate(base, pages));
   } finally {
     server?.stop();
   }

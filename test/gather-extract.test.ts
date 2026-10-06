@@ -229,3 +229,12 @@ describe('brand colours', () => {
     expect(isBrandLike('#0b3d91')).toBe(true);
   });
 });
+
+import { localityOf } from '../src/build/gather/index.js';
+describe('locality', () => {
+  it('uses the neighbourhood from the address, not the search area', () => {
+    const raw = JSON.stringify({ addressComponents: [{ types: ['route'], longText: 'Stratford Road' }, { types: ['sublocality_level_1', 'sublocality'], longText: 'Balsall Heath' }, { types: ['postal_town'], longText: 'Birmingham' }] });
+    expect(localityOf({ raw_json: raw })).toBe('Balsall Heath');
+    expect(localityOf({ raw_json: '{}' })).toBeNull();
+  });
+});

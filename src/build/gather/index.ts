@@ -127,7 +127,7 @@ export function buildFacts(i: GatherInputs): Facts {
       email,
       address: lead.address,
       postcode: lead.postcode,
-      area: lead.area,
+      area: localityOf(lead) ?? lead.area,
       city: 'Birmingham',
       maps_url: lead.google_maps_url,
       place_id: lead.place_id,
@@ -342,4 +342,13 @@ export function writeLeadJson(full: FullLead, repoDir: string): string {
   void _raw;
   writeFileSync(path, JSON.stringify({ ...full, lead }, null, 2));
   return path;
+}
+
+/** The neighbourhood from Google's address, not the area the search happened to use ("Kings Heath" search, Balsall Heath shop). */
+export function localityOf(lead: { raw_json: string | null }): string | null {
+  try {
+    const comps = (JSON.parse(lead.raw_json ?? '{}') as { addressComponents?: { types?: string[]; longText?: string }[] }).addressComponents ?? [];
+    const pick = (t: string) => comps.find((c) => c.types?.includes(t))?.longText;
+    return pick('sublocality_level_1') ?? pick('sublocality') ?? pick('neighborhood') ?? null;
+  } catch { return null; }
 }
