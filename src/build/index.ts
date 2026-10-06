@@ -224,6 +224,8 @@ export async function buildLead(input: string, opts: BuildOpts): Promise<BuildOu
   }
   if (!steps.length) log.info(null, `already ${row.state}, nothing to do (use --force to rebuild)`);
   else { log.info(null, `starting at ${steps[0]} (${steps.length} steps)`); setStatus(slug, 'building'); }
+  // A rejected build goes back to the agent with the review note: that is the revise skill, not a fresh build.
+  const revising = row.state === 'revising';
   for (const step of steps) {
     const max = MAX_ATTEMPTS[step];
     let attempt = 0;
@@ -232,7 +234,8 @@ export async function buildLead(input: string, opts: BuildOpts): Promise<BuildOu
       attempt++;
       updateBuild(full.lead.id, { step_attempts: attempt });
       try {
-        await STEP_FN[step](ctx);
+        if (step === 'agent' && revising) await stepAgent(ctx, '/revise');
+        else await STEP_FN[step](ctx);
         setBuildState(full.lead.id, STEP_TARGET[step]);
         done = true;
       } catch (e) {
