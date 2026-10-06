@@ -24,6 +24,7 @@ import { siteContentSource } from './site-content.js';
 import { STEP_TARGET, STEPS, stepsFrom, type Step } from './state.js';
 import { checkUniqueness } from './unique.js';
 import { resolveSiteType } from './site-type.js';
+import { writePreviousSites } from './previous.js';
 import { colourWord } from './gather/colours.js';
 import { run } from './exec.js';
 
@@ -76,6 +77,7 @@ async function stepRepo(ctx: Ctx) {
   });
   writeFile(dir, 'acta/site-type.json', JSON.stringify(siteType, null, 2));
   ctx.log.info('repo', `site type ${siteType.name}: ${siteType.pages.map((p) => p.route).join(' ')}`);
+  ctx.log.info('repo', `${writePreviousSites(dir, ctx.slug)} previous Acta sites recorded for the designer to avoid`);
   ctx.log.info('repo', `starter copied to ${dir}, brand and facts seeded`);
   await installDeps(dir);
   await ensureGit(dir);
@@ -94,6 +96,7 @@ async function stepResearch(ctx: Ctx) {
   const facts = FactsSchema.parse(readJson(join(ctx.dir, SITE_PATHS.facts)));
   const api = await loadResearch();
   const sessionPath = join(buildDir('_sessions'), 'pinterest.json');
+  writePreviousSites(ctx.dir, ctx.slug);
   const typeFile = join(ctx.dir, 'acta/site-type.json');
   const queries = existsSync(typeFile) ? (readJson<{ pinterest: string[] }>(typeFile).pinterest ?? []) : [];
   const r = await api.researchLead(brand, facts, join(ctx.dir, SITE_PATHS.research), { sessionPath, queries, log: (m) => ctx.log.info('research', m) });
@@ -111,7 +114,7 @@ async function stepAgent(ctx: Ctx, prompt = '/build') {
   }
   if (!agentAvailable()) throw new Error('claude CLI not found on PATH');
   const resultPath = join(buildDir(ctx.slug), `agent-${prompt.replace('/', '')}-${Date.now()}.json`);
-  const r = await runAgent(ctx.dir, { prompt, maxTurns: ctx.opts.maxTurns ?? envInt('BUILD_MAX_TURNS', 250), maxMinutes: ctx.opts.maxMinutes ?? envInt('BUILD_MAX_MINUTES', 180), resultPath, log: (m) => ctx.log.info('agent', m) });
+  const r = await runAgent(ctx.dir, { prompt, maxTurns: ctx.opts.maxTurns ?? envInt('BUILD_MAX_TURNS', 400), maxMinutes: ctx.opts.maxMinutes ?? envInt('BUILD_MAX_MINUTES', 240), resultPath, log: (m) => ctx.log.info('agent', m) });
   const left = await commitAll(ctx.dir, 'wip: changes left uncommitted by the agent');
   if (left) ctx.log.warn('agent', 'committed changes the agent left uncommitted');
   updateBuild(ctx.full.lead.id, { agent_result_path: resultPath, agent_turns: r.turns, agent_seconds: r.seconds, agent_cost_usd: r.costUsd, head_sha: await headSha(ctx.dir), built_at: new Date().toISOString() });
@@ -127,7 +130,7 @@ async function stepAgent(ctx: Ctx, prompt = '/build') {
 /** With no agent there is no design, so the two gates that judge the design become warnings. */
 function tolerateDesignGates(ctx: Ctx, g: Awaited<ReturnType<typeof runGates>>) {
   if (ctx.opts.agent !== false || !g.report) return g;
-  const design = new Set(['brand', 'images', 'pages', 'map', 'plan']);
+  const design = new Set(['brand', 'images', 'pages', 'map', 'plan', 'concepts']);
   const failing = g.failing.filter((f) => !design.has(f.split(/[ (:]/)[0]));
   const tolerated = g.failing.filter((f) => design.has(f.split(/[ (:]/)[0]));
   for (const t of tolerated) ctx.log.warn('gate', `tolerated with --no-agent: ${t}`);

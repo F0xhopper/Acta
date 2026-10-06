@@ -17,3 +17,5 @@ Return ONLY a numbered list. Each item is one concrete fix in one sentence, with
 5. The layout matches the previous Acta site "erdington-plumber-x" (hero photo left, three cards, reviews strip); change the layout concept as the brief promised.
 
 Check specifically: their logo is used, their colours are visible, their photos are used where the brief says, text contrast, tap target size on mobile, section order matches the brief, nothing looks like a generic template of this trade, nothing copies a reference. If there is nothing to fix, return the single line: `No fixes.`
+
+You also score design concepts (phase 3 of /build). Score each concept 1 to 5 on: fits the plan's goal, true to the brand and the real photos, distinct from every previous Acta site in `acta/research/previous-acta-sites.md` (look at their hero screenshots), distinct from the local competitors in `acta/research/`, works on a 390px phone. Be harsh about sameness: a dark site with a gold accent and serif headlines is not distinct from another dark site with a gold accent and serif headlines. Name the winner and the one reason it wins.

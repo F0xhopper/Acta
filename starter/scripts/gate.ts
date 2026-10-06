@@ -49,6 +49,19 @@ function mapGate(pages: Map<string, Page>): Gate {
   return { name: 'map', pass: details.length === 0, value: withMap.length ? `on ${withMap.join(', ')}` : 'missing', details };
 }
 
+/** Three concepts, scored, one chosen with a reason, before the brief. */
+function conceptsGate(): Gate {
+  if (!siteType) return { name: 'concepts', pass: true, value: 'skipped (no acta/site-type.json)' };
+  if (!existsSync('acta/concepts.md')) return { name: 'concepts', pass: false, value: 'missing', details: ['acta/concepts.md does not exist: run the concepts phase'] };
+  const c = readFileSync('acta/concepts.md', 'utf8');
+  const details: string[] = [];
+  const count = (c.match(/^##\s+(?!Scores|Chosen)/gim) ?? []).length;
+  if (count < 3) details.push(`${count} concepts, needs 3`);
+  if (!/^##\s*Scores/im.test(c)) details.push('no ## Scores section');
+  if (!/^##\s*Chosen/im.test(c)) details.push('no ## Chosen section');
+  return { name: 'concepts', pass: details.length === 0, value: `${count} concepts`, details };
+}
+
 /** The plan comes before the design: every required page planned, every photo reviewed. */
 function planGate(): Gate {
   if (!siteType) return { name: 'plan', pass: true, value: 'skipped (no acta/site-type.json)' };
@@ -277,6 +290,7 @@ async function main() {
     push(await pagesGate(base, pages));
     push(mapGate(pages));
     push(planGate());
+    push(conceptsGate());
   } finally {
     server?.stop();
   }
