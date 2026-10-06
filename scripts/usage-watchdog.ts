@@ -6,6 +6,7 @@ import { overLimit, readUsage } from '../src/build/usage.js';
 
 const threshold = Number(process.argv[2] ?? process.env.ACTA_USAGE_STOP_PERCENT ?? 70);
 const interval = Number(process.argv[3] ?? 180) * 1000;
+let lastBucket = -1;
 const agentPids = () => { try { return execSync("pgrep -f 'claude -p /build|claude -p /revise'").toString().trim().split('\n').filter(Boolean); } catch { return []; } };
 
 async function main() {
@@ -22,7 +23,9 @@ async function main() {
         console.log(`${t} watchdog: ${over} (threshold ${threshold}%), stopped the design agent`);
         return;
       }
-      console.log(`${t} watchdog: session ${u.session}%, week ${u.week}%, under ${threshold}%`);
+      // Quiet by default: one line when the higher of the two crosses a 10% step.
+      const bucket = Math.floor(Math.max(u.session ?? 0, u.week ?? 0) / 10);
+      if (bucket !== lastBucket) { console.log(`${t} watchdog: session ${u.session}%, week ${u.week}%, under ${threshold}%`); lastBucket = bucket; }
     }
     await new Promise((r) => setTimeout(r, interval));
   }

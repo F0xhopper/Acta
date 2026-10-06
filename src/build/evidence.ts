@@ -30,17 +30,25 @@ async function shotOf(url: string, out: string): Promise<string | null> {
 /** Their site next to the new one on a phone, scores underneath. The picture that does the selling. */
 export async function makeEvidence(full: FullLead, afterPng: string | null, previewUrl: string | null, gate: GateReport | null, outPath: string): Promise<string> {
   mkdirSync(dirname(outPath), { recursive: true });
-  const W = 1800, H = 1300, PH = 900, PW = Math.round(PH * 390 / 844), Y = 250;
+  const W = 1800, H = 1380, PH = 900, PW = Math.round(PH * 390 / 844), Y = 250;
   const leftX = Math.round(W / 4 - PW / 2), rightX = Math.round((3 * W) / 4 - PW / 2);
   const after = afterPng && existsSync(afterPng) ? afterPng : previewUrl ? await shotOf(previewUrl, join(dirname(outPath), 'preview-mobile.png')) : null;
   const before = full.audit?.screenshot_mobile && existsSync(full.audit.screenshot_mobile) ? full.audit.screenshot_mobile : null;
   const beforeScore = full.audit?.lh_perf ?? null;
   const afterScore = scoreFromGate(gate);
   const status = full.audit?.website_status ?? 'none';
-  const beforeLabel = status === 'none' ? 'No website' : status === 'live' ? 'Their website today' : `Their website today (${status})`;
+  const host = full.audit?.final_domain ?? (full.lead.website_url ? full.lead.website_url.replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0] : null);
+  const beforeLabel = status === 'none' ? 'Their website today' : status === 'live' ? 'Their website today' : 'Their website today';
+  // What someone tapping "Website" on their Google listing gets, in words, when there is nothing to screenshot.
+  const emptyCard = status === 'none' ? ['No website', 'Nothing to tap on Google']
+    : status === 'down' ? [host ?? 'Their website', full.audit?.error === 'ENOTFOUND' ? 'This address no longer exists' : 'Not loading']
+    : status === 'broken' ? [host ?? 'Their website', full.audit?.tls_error ? 'Security warning in the browser' : 'Error page']
+    : status === 'facebook_only' ? ['Facebook page only', 'No website of their own']
+    : status === 'directory_only' ? ['Directory listing only', 'No website of their own']
+    : ['Their website', 'Could not load'];
 
   const frame = (x: number) => `<rect x="${x - 14}" y="${Y - 14}" width="${PW + 28}" height="${PH + 28}" rx="44" fill="#111"/>`;
-  const card = (x: number, text: string) => `<rect x="${x}" y="${Y}" width="${PW}" height="${PH}" rx="30" fill="#f3f4f6"/><text x="${x + PW / 2}" y="${Y + PH / 2}" text-anchor="middle" font-family="Helvetica, Arial" font-size="34" fill="#6b7280">${esc(text)}</text>`;
+  const card = (x: number, lines: string[]) => `<rect x="${x}" y="${Y}" width="${PW}" height="${PH}" rx="30" fill="#f3f4f6"/>${lines.map((t, i) => `<text x="${x + PW / 2}" y="${Y + PH / 2 + (i - (lines.length - 1) / 2) * 52}" text-anchor="middle" font-family="Helvetica, Arial" font-size="${i === 0 ? 34 : 28}" font-weight="${i === 0 ? 700 : 400}" fill="${i === 0 ? '#374151' : '#6b7280'}">${esc(t)}</text>`).join('')}`;
   const scoreText = (x: number, s: number | null, label: string) => s === null ? '' : `<text x="${x + PW / 2}" y="${Y + PH + 90}" text-anchor="middle" font-family="Helvetica, Arial" font-size="40" font-weight="700" fill="${s >= 90 ? '#15803d' : s >= 50 ? '#b45309' : '#b91c1c'}">${label} ${s}/100</text>`;
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}">
     <rect width="${W}" height="${H}" fill="#ffffff"/>
@@ -48,10 +56,10 @@ export async function makeEvidence(full: FullLead, afterPng: string | null, prev
     <text x="${W / 4}" y="200" text-anchor="middle" font-family="Helvetica, Arial" font-size="34" fill="#374151">${esc(beforeLabel)}</text>
     <text x="${(3 * W) / 4}" y="200" text-anchor="middle" font-family="Helvetica, Arial" font-size="34" fill="#374151">With a new site</text>
     ${frame(leftX)}${frame(rightX)}
-    ${before ? '' : card(leftX, status === 'none' ? 'Nothing to show' : 'Could not load')}
-    ${after ? '' : card(rightX, 'Preview')}
+    ${before ? '' : card(leftX, emptyCard)}
+    ${after ? '' : card(rightX, ['Preview'])}
     ${scoreText(leftX, beforeScore, 'Mobile speed')}${scoreText(rightX, afterScore, 'Mobile speed')}
-    <text x="${W / 2}" y="${H - 50}" text-anchor="middle" font-family="Helvetica, Arial" font-size="26" fill="#9ca3af">Scores are Google Lighthouse mobile performance</text>
+    <text x="${W / 2}" y="${H - 36}" text-anchor="middle" font-family="Helvetica, Arial" font-size="24" fill="#9ca3af">Scores are Google Lighthouse mobile performance</text>
   </svg>`;
   const layers: OverlayOptions[] = [];
   for (const [file, x] of [[before, leftX], [after, rightX]] as const) {

@@ -5,7 +5,10 @@ import site from '../src/content/site';
 test('home loads on a phone with a call link and no serious a11y issues', async ({ page }) => {
   await page.goto('/');
   await expect(page.locator('h1')).toBeVisible();
-  if (site.business.phone_e164) await expect(page.locator(`a[href="tel:${site.business.phone_e164}"]`).first()).toBeVisible();
+  // A design may hide the header call link on phones and show a sticky call bar instead: one visible link is enough.
+  if (site.business.phone_e164) await expect(page.locator(`a[href="tel:${site.business.phone_e164}"]`).filter({ visible: true }).first()).toBeVisible();
+  // Scan the page at rest: mid-animation opacity makes text read as lower contrast than it is.
+  await page.evaluate(() => Promise.all(document.getAnimations().map((a) => a.finished.catch(() => undefined))));
   const results = await new AxeBuilder({ page }).analyze();
   const serious = results.violations.filter((v) => v.impact === 'serious' || v.impact === 'critical');
   expect(serious, serious.map((v) => `${v.id}: ${v.help}`).join('\n')).toEqual([]);
@@ -25,7 +28,8 @@ test('contact form posts and lands on the sent state', async ({ page }) => {
   await page.fill('#message', 'Hello from the smoke test.');
   await page.click('button[type="submit"]');
   await expect(page).toHaveURL(/sent=1/);
-  await expect(page.getByRole('status')).toBeVisible();
+  // A design may use role=status elsewhere (an "open now" badge); the sent confirmation is the one inside main.
+  await expect(page.getByRole('main').getByRole('status').filter({ visible: true }).first()).toBeVisible();
 });
 
 test('contact form rejects an empty submission', async ({ page }) => {

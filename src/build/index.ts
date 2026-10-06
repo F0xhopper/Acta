@@ -157,8 +157,14 @@ async function stepPush(ctx: Ctx) {
   if (ctx.opts.sandbox) { ctx.log.info('push', 'sandbox: nothing pushed'); return; }
   await pushMain(ctx.dir);
   ctx.log.info('push', `pushed ${(await headSha(ctx.dir)).slice(0, 7)} to origin/main`);
-  const ci = await run('gh', ['run', 'list', '--limit', '1', '--json', 'status,conclusion,url'], { cwd: ctx.dir });
-  if (ci.code === 0 && ci.stdout.trim().startsWith('[') && ci.stdout.includes('url')) ctx.log.info('push', `CI: ${ci.stdout.trim().slice(0, 200)}`);
+  // CI for this exact commit. Not awaited: the pipeline has already run the same gates locally; CI is the Linux record.
+  const sha = await headSha(ctx.dir);
+  for (let i = 0; i < 6; i++) {
+    const ci = await run('gh', ['run', 'list', '--commit', sha, '--limit', '1', '--json', 'status,conclusion,url'], { cwd: ctx.dir });
+    const runs = ci.code === 0 ? (JSON.parse(ci.stdout || '[]') as { status: string; conclusion: string; url: string }[]) : [];
+    if (runs[0]) { ctx.log.info('push', `CI started for ${sha.slice(0, 7)}: ${runs[0].url}`); break; }
+    await new Promise((r) => setTimeout(r, 5000));
+  }
 }
 
 function labelFor(ctx: Ctx): string {

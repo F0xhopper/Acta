@@ -74,8 +74,11 @@ async function lighthouseGate(base: string): Promise<Gate> {
       mkdirSync('acta/qa', { recursive: true });
       writeFileSync(`acta/qa/lighthouse${t === '/' ? '-home' : '-service'}.json`, JSON.stringify(r?.lhr ?? {}));
     }
-    const pass = scores.performance >= 90 && scores.seo >= 95 && scores.accessibility >= 90;
-    return { name: 'lighthouse', pass, value: `perf ${scores.performance} seo ${scores.seo} a11y ${scores.accessibility} bp ${scores['best-practices']}`, threshold: `perf>=90 seo>=95 a11y>=90 (mobile${process.env.ACTA_PREVIEW === '1' ? ', crawlability excluded in preview' : ''})`, details };
+    // Shared CI runners are slower and noisier than a laptop, so the same site scores lower there. Accessibility
+    // and SEO don't depend on CPU and keep their thresholds; performance gets CI slack. The real bar is the local gate.
+    const perfMin = Number(process.env.ACTA_PERF_MIN ?? (flag('--ci') ? 75 : 90));
+    const pass = scores.performance >= perfMin && scores.seo >= 95 && scores.accessibility >= 90;
+    return { name: 'lighthouse', pass, value: `perf ${scores.performance} seo ${scores.seo} a11y ${scores.accessibility} bp ${scores['best-practices']}`, threshold: `perf>=${perfMin} seo>=95 a11y>=90 (mobile${flag('--ci') ? ', CI runner' : ''}${process.env.ACTA_PREVIEW === '1' ? ', crawlability excluded in preview' : ''})`, details };
   } finally {
     await chrome.kill();
   }
