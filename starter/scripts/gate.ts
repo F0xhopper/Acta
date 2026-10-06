@@ -49,6 +49,26 @@ function mapGate(pages: Map<string, Page>): Gate {
   return { name: 'map', pass: details.length === 0, value: withMap.length ? `on ${withMap.join(', ')}` : 'missing', details };
 }
 
+/** Photos the plan marks "drop" must appear nowhere: not in any page, not in site.ts. */
+function droppedPhotosGate(pages: Map<string, Page>): Gate {
+  if (!existsSync('acta/plan.md')) return { name: 'dropped-photos', pass: true, value: 'skipped (no plan)' };
+  const dropped = new Set<string>();
+  for (const line of readFileSync('acta/plan.md', 'utf8').split('\n')) {
+    if (!line.trim().startsWith('|')) continue;
+    const cells = line.split('|').map((c) => c.trim().toLowerCase());
+    const file = cells.find((c) => /[\w-]+\.(jpe?g|png|webp)/.test(c))?.match(/[\w-]+\.(jpe?g|png|webp)/)?.[0];
+    if (file && cells.some((c) => /^\**drop\**$/.test(c) || /^drop\b/.test(c))) dropped.add(file);
+  }
+  if (!dropped.size) return { name: 'dropped-photos', pass: true, value: 'none dropped' };
+  const details: string[] = [];
+  const siteSrc = readFileSync('src/content/site.ts', 'utf8').toLowerCase();
+  for (const f of dropped) {
+    if (siteSrc.includes(f)) details.push(`${f} is marked drop in the plan but listed in site.ts`);
+    for (const p of pages.values()) if (p.html.toLowerCase().includes(encodeURIComponent(f).toLowerCase()) || p.html.toLowerCase().includes(f)) details.push(`${f} is marked drop but used on ${p.path}`);
+  }
+  return { name: 'dropped-photos', pass: details.length === 0, value: `${dropped.size} dropped`, details };
+}
+
 /** Brand icons and the link preview exist and are images; the Next.js default favicon is gone. */
 async function iconsGate(base: string, pages: Map<string, Page>): Promise<Gate> {
   const home = pages.get('/');
@@ -316,6 +336,7 @@ async function main() {
     push(planGate());
     push(conceptsGate());
     push(await iconsGate(base, pages));
+    push(droppedPhotosGate(pages));
   } finally {
     server?.stop();
   }

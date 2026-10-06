@@ -23,6 +23,27 @@ export function deployConfigured(): boolean {
 const authArgs = () => [...(process.env.VERCEL_TOKEN ? ['--token', process.env.VERCEL_TOKEN] : []), ...(process.env.VERCEL_TEAM_ID ? ['--scope', process.env.VERCEL_TEAM_ID] : [])];
 
 /** Create or reuse the Vercel project, deploy production with the preview flag, attach the subdomain, verify. */
+/** Poll the API until the deployment is ready or has stopped for a reason. */
+export async function waitForDeployment(url: string, say: (m: string) => void, timeoutMs = 12 * 60_000): Promise<{ state: string; error: string | null }> {
+  const token = vercelToken();
+  if (!token) return { state: 'READY', error: null };
+  const tid = await teamId(token);
+  const host = url.replace(/^https?:\/\//, '');
+  const t0 = Date.now();
+  let last = '';
+  while (Date.now() - t0 < timeoutMs) {
+    try {
+      const res = await fetchWithTimeout(`https://api.vercel.com/v13/deployments/${host}${tid ? `?teamId=${tid}` : ''}`, { timeoutMs: 20_000, headers: { authorization: `Bearer ${token}` } });
+      const d = (await res.json()) as { readyState?: string; errorMessage?: string; errorCode?: string };
+      const st = d.readyState ?? 'UNKNOWN';
+      if (st !== last) { say(`deployment ${st.toLowerCase()}`); last = st; }
+      if (['READY', 'ERROR', 'CANCELED', 'BLOCKED'].includes(st)) return { state: st, error: d.errorMessage ?? d.errorCode ?? null };
+    } catch { /* retry */ }
+    await sleep(5000);
+  }
+  return { state: 'TIMEOUT', error: 'no final state within 12 minutes' };
+}
+
 export interface DeployOpts { log?: (m: string) => void; label: string }
 
 /** Create or reuse the Vercel project, deploy production with the preview flag, attach the subdomain, verify. */
@@ -96,15 +117,17 @@ export async function deploySite(dir: string, slug: string, opts: DeployOpts): P
   if (prot) warnings.push(prot);
 
   say('vercel deploy --prod');
-  const dep = await vercel(['deploy', '--prod', '--yes'], undefined, 15 * 60_000);
+  // --no-wait returns as soon as the deployment exists; the API then says READY, or why not (BLOCKED, ERROR).
+  // Without this the CLI sits at "Building…" forever when Vercel blocks a deployment.
+  const dep = await vercel(['deploy', '--prod', '--yes', '--no-wait'], undefined, 10 * 60_000);
   const urls = (dep.stdout + '\n' + dep.stderr).match(/https:\/\/[^\s]+\.vercel\.app/g) ?? [];
   // The CLI prints the unique deployment URL and may also print the project alias; keep the unique one.
   const deploymentUrl = urls.find((u) => /-[a-z0-9]{9}-/.test(u)) ?? urls[0] ?? null;
   if (dep.code !== 0 || !deploymentUrl) {
     throw new Error(`vercel deploy failed: ${(dep.stderr || dep.stdout).trim().split('\n').slice(-6).join(' | ').slice(0, 600)}`);
   }
-  const wait = await vercel(['inspect', deploymentUrl, '--wait', '--timeout', '10m'], undefined, 11 * 60_000);
-  if (wait.code !== 0) warnings.push('inspect --wait did not confirm READY, verifying by fetch');
+  const state = await waitForDeployment(deploymentUrl, (m) => say(m));
+  if (state.state !== 'READY') throw new Error(`deployment ${state.state}${state.error ? `: ${state.error}` : ''}`);
 
   const candidates: string[] = [];
   if (previewDomain) {

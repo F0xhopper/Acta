@@ -143,7 +143,7 @@ export function buildFacts(i: GatherInputs): Facts {
     },
     company: i.company,
     services: extractServices(pages, lead.category_key),
-    areas: extractAreas(text, lead.area),
+    areas: extractAreas(text, localityOf(lead) ?? lead.area),
     claims: [...dedup.values()],
     reviews,
     attributes,

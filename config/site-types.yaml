@@ -27,15 +27,14 @@ types:
       - { route: "/contact", purpose: "Find us: map, address, hours, call, WhatsApp, walk-in policy" }
     home:
       - { section: hero, intent: "The best photo of the work or the room, the name, one line, call/book button, rating, all above the fold on a phone" }
-      - { section: work_strip, intent: "3-6 photos of the work linking to /gallery, right after the hero" }
-      - { section: services, intent: "Services as photo cards with a price-from where known" }
+      - { section: services, intent: "Services as photo cards with a price-from where known; the section ends with a link to /gallery" }
       - { section: hours, intent: "Today's hours and open/closed status, late nights called out" }
       - { section: reviews, intent: "Three to five verbatim reviews with first name, plus the total" }
       - { section: find_us, intent: "Map, address, directions link" }
     features: [gallery, lightbox, map, sticky_call_bar, hours_status, reviews, booking_link_if_known, instagram_link_if_known]
     imagery: "Work first: cuts, finished looks, before-and-after. Then the room and the chair. 8+ photos ideal. Never photos of clutter, doorsteps, skin conditions, or other businesses."
     tone: "Confident, local, a bit of swagger. Short lines. Talk about the cut, not the business."
-    avoid: [stock photos of models, generic "welcome to our website", long paragraphs, hiding prices, tiny photos]
+    avoid: [a row of small thumbnails directly under the hero, stock photos of models, generic "welcome to our website", long paragraphs, hiding prices, tiny photos]
     pinterest:
       - "{category} website design {mood}"
       - "{category} portfolio gallery website"
@@ -64,7 +63,7 @@ types:
     features: [quote_form, map, sticky_call_bar, reviews, areas_pages, gallery_if_photos, emergency_banner_if_call_outs]
     imagery: "Real jobs over portraits: finished bathrooms, boilers, roofs, gardens. Van and team if available. Never stock tradespeople."
     tone: "Plain, reassuring, specific. Say what happens when they call."
-    avoid: [stock hard-hat photos, unevidenced accreditations, vague "quality service", walls of text]
+    avoid: [a row of small thumbnails directly under the hero, stock hard-hat photos, unevidenced accreditations, vague "quality service", walls of text]
     pinterest:
       - "{category} website design"
       - "trades website hero {palette}"
@@ -82,15 +81,14 @@ types:
       - { route: "/contact", purpose: "Map, hours, call, order links, bookings" }
     home:
       - { section: hero, intent: "The best food or room photo, name, open status, order or directions" }
-      - { section: menu_highlights, intent: "Dishes reviewers mention, with photos" }
+      - { section: menu_highlights, intent: "Dishes reviewers mention, with photos; ends with a link to /gallery" }
       - { section: hours, intent: "Open now and today's hours" }
-      - { section: gallery_strip, intent: "Food and room photos linking to /gallery" }
       - { section: reviews, intent: "Verbatim reviews about the food" }
       - { section: find_us, intent: "Map and address" }
     features: [gallery, lightbox, map, hours_status, menu_page, order_link_if_known, reviews]
     imagery: "Food close-ups, the counter, the room busy. 8+ photos ideal."
     tone: "Warm, sensory, short."
-    avoid: [stock food, PDF menus, autoplay video]
+    avoid: [a row of small thumbnails directly under the hero, stock food, PDF menus, autoplay video]
     pinterest:
       - "{category} website design {mood}"
       - "{category} menu web design"
@@ -114,7 +112,7 @@ types:
     features: [enquiry_form, map, reviews, sticky_call_bar]
     imagery: "The real premises and team. Calm, uncluttered."
     tone: "Clear, calm, expert, never salesy."
-    avoid: [stock handshakes, jargon, unevidenced credentials]
+    avoid: [a row of small thumbnails directly under the hero, stock handshakes, jargon, unevidenced credentials]
     pinterest:
       - "{category} website design {mood}"
       - "professional services website {palette}"
@@ -138,7 +136,7 @@ types:
     features: [map, reviews, sticky_call_bar, booking_link_if_known, gallery_if_photos]
     imagery: "Real sessions and the space, energy, never stock gym models."
     tone: "Direct, encouraging, no hype."
-    avoid: [stock fitness models, before-after without consent, hype]
+    avoid: [a row of small thumbnails directly under the hero, stock fitness models, before-after without consent, hype]
     pinterest:
       - "personal trainer website design {mood}"
       - "fitness coach landing page {palette}"
