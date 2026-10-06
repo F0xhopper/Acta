@@ -1,6 +1,7 @@
 import { existsSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { run } from './exec.js';
+import { overLimit, readUsage, usageThreshold } from './usage.js';
 
 export interface AgentOpts { prompt: string; maxTurns: number; maxMinutes: number; resultPath: string; log?: (m: string) => void }
 export interface AgentResult { ok: boolean; turns: number | null; seconds: number; costUsd: number | null; message: string; timedOut: boolean; raw: string }
@@ -29,7 +30,38 @@ export async function runAgent(dir: string, opts: AgentOpts): Promise<AgentResul
   const say = opts.log ?? (() => undefined);
   const args = ['-p', opts.prompt, '--output-format', 'json', '--max-turns', String(opts.maxTurns), '--allowedTools', ALLOWED_TOOLS.join(',')];
   say(`claude ${args.slice(0, 2).join(' ')} (max ${opts.maxTurns} turns, ${opts.maxMinutes} min)`);
-  const r = await run('claude', args, { cwd: dir, env: cleanEnv(), inheritEnv: false, timeoutMs: opts.maxMinutes * 60_000 });
+  // Usage guard: poll the subscription's usage and stop the agent before it reaches the threshold.
+  const threshold = usageThreshold();
+  let stoppedFor: string | null = null;
+  const before = await readUsage();
+  if (before) {
+    say(`usage before: session ${before.session ?? '?'}%, week ${before.week ?? '?'}% (stop at ${threshold}%)`);
+    const over = overLimit(before, threshold);
+    if (over) {
+      writeFileSync(opts.resultPath, `not started: ${over}`);
+      return { ok: false, turns: 0, seconds: 0, costUsd: null, message: `paused: usage limit guard, ${over}, threshold ${threshold}%`, timedOut: false, raw: '' };
+    }
+  }
+  const child = { pid: 0 };
+  let guard: NodeJS.Timeout | null = null;
+  const poll = async () => {
+    const u = await readUsage().catch(() => null);
+    if (!u) return;
+    say(`usage: session ${u.session ?? '?'}%, week ${u.week ?? '?'}%`);
+    const over = overLimit(u, threshold);
+    if (over && child.pid) {
+      stoppedFor = over;
+      say(`usage guard: ${over}, stopping the agent`);
+      try { process.kill(-child.pid, 'SIGTERM'); } catch { /* gone */ }
+    }
+  };
+  guard = setInterval(() => { void poll(); }, 3 * 60_000);
+  const r = await run('claude', args, { cwd: dir, env: cleanEnv(), inheritEnv: false, timeoutMs: opts.maxMinutes * 60_000, onSpawn: (pid) => { child.pid = pid; } });
+  if (guard) clearInterval(guard);
+  if (stoppedFor) {
+    writeFileSync(opts.resultPath, r.stdout || r.stderr || `stopped: ${stoppedFor}`);
+    return { ok: false, turns: null, seconds: r.seconds, costUsd: null, message: `paused: usage limit guard, ${stoppedFor}, threshold ${threshold}%`, timedOut: false, raw: r.stdout };
+  }
   writeFileSync(opts.resultPath, r.stdout || r.stderr);
   let parsed: Record<string, unknown> | null = null;
   try {

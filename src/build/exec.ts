@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 
 export interface ExecResult { code: number | null; stdout: string; stderr: string; timedOut: boolean; seconds: number }
-export interface ExecOpts { cwd: string; env?: NodeJS.ProcessEnv; timeoutMs?: number; input?: string; onLine?: (line: string) => void; inheritEnv?: boolean }
+export interface ExecOpts { cwd: string; env?: NodeJS.ProcessEnv; timeoutMs?: number; input?: string; onLine?: (line: string) => void; inheritEnv?: boolean; onSpawn?: (pid: number) => void }
 
 /** Run a command, capture output, kill the whole process group on timeout. */
 export function run(cmd: string, args: string[], opts: ExecOpts): Promise<ExecResult> {
@@ -13,6 +13,7 @@ export function run(cmd: string, args: string[], opts: ExecOpts): Promise<ExecRe
       stdio: ['pipe', 'pipe', 'pipe'],
       detached: process.platform !== 'win32',
     });
+    if (child.pid) opts.onSpawn?.(child.pid);
     let stdout = '';
     let stderr = '';
     let timedOut = false;
