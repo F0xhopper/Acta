@@ -27,6 +27,7 @@ import { resolveSiteType } from './site-type.js';
 import { writePreviousSites } from './previous.js';
 import { colourWord } from './gather/colours.js';
 import { run } from './exec.js';
+import { conceptChosen, conceptsWritten, loadCheckpoints, Paused, photosCurated, renderConceptMockups, setConceptCheckpoint } from './checkpoints.js';
 
 export interface BuildOpts {
   budget: Budget;
@@ -114,6 +115,9 @@ async function stepAgent(ctx: Ctx, prompt = '/build') {
     return;
   }
   if (!agentAvailable()) throw new Error('claude CLI not found on PATH');
+  // Concept checkpoint: a first /build run stops after writing three concepts with mock-ups, for you to choose.
+  const conceptStop = prompt === '/build' && loadCheckpoints().concept && !conceptChosen(ctx.dir);
+  setConceptCheckpoint(ctx.dir, conceptStop);
   const resultPath = join(buildDir(ctx.slug), `agent-${prompt.replace('/', '')}-${Date.now()}.json`);
   const r = await runAgent(ctx.dir, { prompt, maxTurns: ctx.opts.maxTurns ?? envInt('BUILD_MAX_TURNS', 400), maxMinutes: ctx.opts.maxMinutes ?? envInt('BUILD_MAX_MINUTES', 240), resultPath, log: (m) => ctx.log.info('agent', m) });
   const left = await commitAll(ctx.dir, 'wip: changes left uncommitted by the agent');
@@ -125,6 +129,12 @@ async function stepAgent(ctx: Ctx, prompt = '/build') {
       ? `paused: ${r.message.slice(0, 200)}. Work so far is committed; run the same build command after the reset and it continues from the artefacts in acta/.`
       : `agent ${r.timedOut ? 'timed out' : 'failed'}: ${r.message.slice(0, 400)}`);
   }
+  if (conceptStop && !conceptChosen(ctx.dir) && conceptsWritten(ctx.dir)) {
+    const n = await renderConceptMockups(ctx.dir, (m) => ctx.log.warn('agent', m));
+    await commitAll(ctx.dir, 'chore: concept mock-up screenshots');
+    throw new Paused('awaiting_concept', `three concepts written${n ? ` with ${n} mock-ups` : ''}; waiting for you to choose one`);
+  }
+  setConceptCheckpoint(ctx.dir, false);
   if (!existsSync(join(ctx.dir, SITE_PATHS.buildLog))) ctx.log.warn('agent', 'no build log written');
 }
 
@@ -239,6 +249,15 @@ export async function buildLead(input: string, opts: BuildOpts): Promise<BuildOu
     console.log(`  sandbox=${!!opts.sandbox} agent=${opts.agent !== false} research=${opts.research !== false} deploy=${opts.deploy ?? (!opts.sandbox && avail.ok)} (${avail.detail})`);
     return { slug, name: full.lead.name, state: row.state, repoUrl: row.repo_url, previewUrl: row.preview_url, evidence: row.evidence_path, dir: ctx.dir, error: null };
   }
+  // A build paused at a checkpoint stays paused until you've answered, unless a step is named explicitly.
+  if (!opts.from && row.state === 'awaiting_photos' && !photosCurated(ctx.dir)) {
+    log.info(null, 'waiting for you to sort the photos (UI Photos tab, or pnpm pipeline photos)');
+    return { slug, name: full.lead.name, state: row.state, repoUrl: row.repo_url, previewUrl: row.preview_url, evidence: row.evidence_path, dir: ctx.dir, error: null };
+  }
+  if (!opts.from && row.state === 'awaiting_concept' && conceptsWritten(ctx.dir) && !conceptChosen(ctx.dir)) {
+    log.info(null, 'waiting for you to choose a concept (UI Concepts tab, or pnpm pipeline concept)');
+    return { slug, name: full.lead.name, state: row.state, repoUrl: row.repo_url, previewUrl: row.preview_url, evidence: row.evidence_path, dir: ctx.dir, error: null };
+  }
   if (!steps.length) log.info(null, `already ${row.state}, nothing to do (use --force to rebuild)`);
   else { log.info(null, `starting at ${steps[0]} (${steps.length} steps)`); setStatus(slug, 'building'); }
   // A rejected build goes back to the agent with the review note: that is the revise skill, not a fresh build.
@@ -255,7 +274,15 @@ export async function buildLead(input: string, opts: BuildOpts): Promise<BuildOu
         else await STEP_FN[step](ctx);
         setBuildState(full.lead.id, STEP_TARGET[step]);
         done = true;
+        if (step === 'repo' && !revising && loadCheckpoints().photos && !photosCurated(ctx.dir) && hasPhotos(ctx.dir)) throw new Paused('awaiting_photos', 'photos gathered; waiting for you to keep, drop or pick the hero');
       } catch (e) {
+        if (e instanceof Paused) {
+          setBuildState(full.lead.id, e.state);
+          log.info(step, `paused: ${e.message}`);
+          writeLeaderboard();
+          const b = getBuild(full.lead.id);
+          return { slug, name: full.lead.name, state: e.state, repoUrl: b?.repo_url ?? null, previewUrl: b?.preview_url ?? null, evidence: null, dir: ctx.dir, error: null };
+        }
         const msg = (e as Error).message;
         log.error(step, `attempt ${attempt}/${max} failed: ${msg}`);
         if (attempt >= max) {
@@ -271,6 +298,10 @@ export async function buildLead(input: string, opts: BuildOpts): Promise<BuildOu
   const final = getBuild(full.lead.id)!;
   writeLeaderboard();
   return { slug, name: full.lead.name, state: final.state, repoUrl: final.repo_url, previewUrl: final.preview_url, evidence: final.evidence_path, dir: ctx.dir, error: null };
+}
+
+function hasPhotos(dir: string): boolean {
+  try { return BrandSchema.parse(readJson(join(dir, SITE_PATHS.brand))).photos.length > 0; } catch { return false; }
 }
 
 // ---------- review ----------

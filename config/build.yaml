@@ -1,0 +1,17 @@
+# Build settings the UI and the CLI share.
+#
+# Checkpoints are the two places a build stops and waits for you:
+#   photos:  after the brand is gathered, you keep, drop or pick the hero photo before any design starts.
+#   concept: after the agent writes three concepts with mock-ups, you choose one before it builds.
+# A paused build waits in the inbox. The overnight builder skips paused builds and moves on.
+checkpoints:
+  photos: true
+  concept: true
+
+# Automatic discovery. Off for now: you search from the Leads page (or `pnpm pipeline run "<query>"`)
+# and pick by hand. Set either to true to bring it back.
+#   sweep:     the weekly rotating search from config/sweep.yaml (`pnpm pipeline sweep`, and the Sunday job)
+#   auto_pick: the picker rule in config/pick.yaml (`pnpm pipeline pick --auto`, and the Sunday job)
+automation:
+  sweep: false
+  auto_pick: false

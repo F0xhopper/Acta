@@ -1,0 +1,198 @@
+@import "tailwindcss";
+@import "@fontsource-variable/inter";
+
+/*
+ * Acta's operator UI. The look follows Peritus, simplified: black and white with pure neutral greys,
+ * a container told from the ground by a lighter fill and a hairline, pill-shaped controls, and colour
+ * kept for information only. Green, amber and red appear as marks (a status dot, a tier dot, a meter),
+ * never as a button or a tinted panel. The primary action is ink on paper, or paper on ink.
+ */
+
+:root {
+  /* Dark glass, always. The ground is near-black with soft grey light; containers are frosted glass:
+     a translucent white fill, a backdrop blur, a hairline edge and a faint top highlight. */
+  --bg: #09090a;
+  --panel: rgba(255, 255, 255, 0.045);
+  --panel-solid: #141415;
+  --raised: rgba(255, 255, 255, 0.085);
+  --border: rgba(255, 255, 255, 0.13);
+  --border-soft: rgba(255, 255, 255, 0.075);
+  --fg: #f5f5f6;
+  --fg-2: rgba(245, 245, 246, 0.74);
+  --fg-3: rgba(245, 245, 246, 0.52);
+  --fg-4: rgba(245, 245, 246, 0.28);
+  --accent: #f5f5f6;
+  --accent-fg: #0a0a0a;
+  --ok: #4fd17a;
+  --warn: #f2a53c;
+  --bad: #f05252;
+  --info: rgba(245, 245, 246, 0.6);
+  --pin: #ff4d4f;
+  --row-h: 34px;
+  --btn-lg: 42px;
+  --chip-h: 22px;
+  color-scheme: dark;
+}
+
+@media (pointer: coarse) {
+  :root { --row-h: 44px; --btn-lg: 48px; --chip-h: 26px; }
+  input, textarea, select { font-size: 16px; }
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-panel: var(--panel);
+  --color-panel-solid: var(--panel-solid);
+  --color-raised: var(--raised);
+  --color-border: var(--border);
+  --color-border-soft: var(--border-soft);
+  --color-fg: var(--fg);
+  --color-fg-2: var(--fg-2);
+  --color-fg-3: var(--fg-3);
+  --color-fg-4: var(--fg-4);
+  --color-accent: var(--accent);
+  --color-accent-fg: var(--accent-fg);
+  --color-ok: var(--ok);
+  --color-warn: var(--warn);
+  --color-bad: var(--bad);
+  --color-info: var(--info);
+  --color-pin: var(--pin);
+
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --text-label: 0.6875rem;
+  --text-label--line-height: 1rem;
+  --text-xs: 0.75rem;
+  --text-xs--line-height: 1.0625rem;
+  --text-sm: 0.8125rem;
+  --text-sm--line-height: 1.25rem;
+  --text-base: 0.875rem;
+  --text-base--line-height: 1.55;
+  --text-lg: 1rem;
+  --text-lg--line-height: 1.4;
+  --text-title: 1.375rem;
+  --text-title--line-height: 1.25;
+  --text-stat: 1.25rem;
+  --text-stat--line-height: 1.2;
+
+  --radius-card: 20px;
+  --radius-panel: 28px;
+
+  --ease-out: cubic-bezier(0.2, 0, 0, 1);
+}
+
+@layer base {
+  html, body, #root { height: 100%; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background:
+      radial-gradient(1100px 620px at 88% -12%, rgba(255, 255, 255, 0.09), transparent 62%),
+      radial-gradient(900px 560px at -12% 108%, rgba(255, 255, 255, 0.055), transparent 60%),
+      radial-gradient(700px 400px at 40% 40%, rgba(255, 255, 255, 0.018), transparent 70%),
+      var(--bg);
+    background-attachment: fixed;
+    color: var(--fg-2);
+    font-family: var(--font-sans);
+    font-size: var(--text-base);
+    line-height: 1.55;
+    font-variant-numeric: tabular-nums;
+    -webkit-font-smoothing: antialiased;
+  }
+  h1, h2, h3, h4 { color: var(--fg); font-weight: 600; text-wrap: balance; }
+  a { color: inherit; }
+  ::selection { background: color-mix(in srgb, var(--fg) 14%, transparent); }
+  :focus-visible { outline: 2px solid var(--fg); outline-offset: 1px; }
+  hr { border-color: var(--border-soft); }
+  button { cursor: pointer; }
+  button:disabled { cursor: not-allowed; }
+}
+
+@layer base {
+  /* The backdrop the glass sits on: soft light from the top right and a faint contour texture that fades
+     out, so the frosted panels have something to blur, like the map behind the reference's panels. */
+  body::before {
+    content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none;
+    background:
+      radial-gradient(60% 55% at 92% 0%, rgba(255, 255, 255, 0.13), transparent 70%),
+      radial-gradient(40% 40% at 70% 30%, rgba(255, 255, 255, 0.04), transparent 70%),
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='520' height='520' viewBox='0 0 520 520'%3E%3Cg fill='none' stroke='white' stroke-opacity='0.07' stroke-width='1'%3E%3Cpath d='M-20 80 C 90 40 160 140 260 100 S 430 30 540 90'/%3E%3Cpath d='M-20 150 C 100 110 170 210 270 170 S 440 100 540 160'/%3E%3Cpath d='M-20 220 C 80 190 180 280 280 240 S 420 170 540 230'/%3E%3Cpath d='M-20 290 C 110 250 190 350 290 310 S 450 240 540 300'/%3E%3Cpath d='M-20 360 C 90 330 170 420 270 380 S 430 310 540 370'/%3E%3Cpath d='M-20 430 C 100 400 180 490 280 450 S 440 380 540 440'/%3E%3C/g%3E%3C/svg%3E");
+    -webkit-mask-image: radial-gradient(70% 70% at 85% 10%, #000 10%, transparent 75%);
+    mask-image: radial-gradient(70% 70% at 85% 10%, #000 10%, transparent 75%);
+  }
+}
+
+@layer components {
+  /* Frosted glass: the one container surface. */
+  .glass {
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.065), rgba(255, 255, 255, 0.028));
+    border: 1px solid var(--border-soft);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07), 0 24px 48px -28px rgba(0, 0, 0, 0.7);
+    -webkit-backdrop-filter: blur(22px) saturate(140%);
+    backdrop-filter: blur(22px) saturate(140%);
+  }
+  /* The highlighted card: lit from its top-left corner, like a pane catching the light. */
+  .glass-lit {
+    background:
+      linear-gradient(150deg, rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.05) 45%, rgba(255, 255, 255, 0.02)),
+      rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 30px 60px -30px rgba(0, 0, 0, 0.8);
+    -webkit-backdrop-filter: blur(26px) saturate(150%);
+    backdrop-filter: blur(26px) saturate(150%);
+  }
+  /* Floating things (menus, dialogs, toasts) need to be readable over anything: more opaque glass. */
+  .glass-strong {
+    background: rgba(24, 24, 26, 0.86);
+    border: 1px solid var(--border);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 30px 70px -20px rgba(0, 0, 0, 0.85);
+    -webkit-backdrop-filter: blur(30px) saturate(150%);
+    backdrop-filter: blur(30px) saturate(150%);
+  }
+  /* Big thin numbers, as in the reference: light weight, tight tracking. */
+  .num-display { font-weight: 300; letter-spacing: -0.035em; line-height: 1; color: var(--fg); }
+  .scroll-col { min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+  .label { font-size: var(--text-label); line-height: 1rem; letter-spacing: 0.04em; text-transform: uppercase; color: var(--fg-3); font-weight: 500; }
+  .field {
+    width: 100%; height: var(--row-h); padding: 0 12px; border-radius: 9999px;
+    border: 1px solid var(--border-soft); background: rgba(255, 255, 255, 0.05); color: var(--fg); font-size: var(--text-sm);
+    transition: border-color 120ms var(--ease-out);
+  }
+  .field:hover { border-color: color-mix(in srgb, var(--fg) 30%, var(--border)); }
+  .field::placeholder { color: var(--fg-4); }
+  textarea.field { height: auto; border-radius: 12px; padding: 8px 12px; line-height: 1.5; resize: vertical; }
+  select.field option { background: var(--panel-solid); color: var(--fg); }
+  select.field { padding-right: 28px; appearance: none; background-image: linear-gradient(45deg, transparent 50%, var(--fg-3) 50%), linear-gradient(135deg, var(--fg-3) 50%, transparent 50%); background-position: calc(100% - 15px) 50%, calc(100% - 10px) 50%; background-size: 5px 5px; background-repeat: no-repeat; }
+
+  .md { color: var(--fg-2); }
+  .md h1 { font-size: 18px; margin: 18px 0 8px; }
+  .md h2 { font-size: 15px; margin: 18px 0 6px; }
+  .md h3 { font-size: 14px; margin: 14px 0 4px; }
+  .md p, .md ul, .md ol, .md table, .md blockquote { margin: 6px 0; }
+  .md ul { list-style: disc; padding-left: 20px; }
+  .md ol { list-style: decimal; padding-left: 20px; }
+  .md li { margin: 2px 0; }
+  .md strong { color: var(--fg); font-weight: 600; }
+  .md table { border-collapse: collapse; font-size: 13px; display: block; overflow-x: auto; }
+  .md th, .md td { border: 1px solid var(--border-soft); padding: 4px 8px; text-align: left; vertical-align: top; }
+  .md code { font-family: var(--font-mono); font-size: 12px; background: var(--raised); padding: 1px 4px; border-radius: 4px; }
+  .md pre { background: var(--raised); padding: 10px; border-radius: 10px; overflow: auto; }
+  .md a { text-decoration: underline; text-underline-offset: 2px; color: var(--fg); }
+  .md blockquote { border-left: 2px solid var(--border); padding-left: 10px; color: var(--fg-3); }
+
+  .checker {
+    background-color: var(--raised);
+    background-image: linear-gradient(45deg, var(--border-soft) 25%, transparent 25%), linear-gradient(-45deg, var(--border-soft) 25%, transparent 25%), linear-gradient(45deg, transparent 75%, var(--border-soft) 75%), linear-gradient(-45deg, transparent 75%, var(--border-soft) 75%);
+    background-size: 16px 16px; background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+  }
+}
+
+@keyframes acta-pulse { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } }
+@keyframes acta-skeleton { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+@utility animate-pulse-dot { animation: acta-pulse 1.4s ease-in-out infinite; }
+@utility animate-skeleton { animation: acta-skeleton 1.6s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; }
+}

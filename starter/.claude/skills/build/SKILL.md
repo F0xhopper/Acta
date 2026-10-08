@@ -42,11 +42,15 @@ Do not copy anything from any reference. Not text, not images, not a logo, not a
 
 Ask the planner to write `acta/plan.md`. This is where the site is thought through: every page and section with its content and evidence, the photo audit, the gallery order, the features, the gaps. `acta/site-type.json` says what this kind of site must contain; the plan says what this business's site contains.
 
+If `acta/curation.json` exists, the owner has already sorted the photos by hand. Those decisions are final: dropped photos have been moved to `acta/photos-dropped/` and must never be used, and its `hero` is the hero photo. The photo audit records them as decided by the owner.
+
 Read the plan when it returns and check it: every route in `acta/site-type.json` is covered, every photo in `public/brand/photos/` has a row in the photo audit, the hero is a strong photo, nothing marked drop is used anywhere, and every section names its evidence. Send it back once if not. Commit.
 
 ## Phase 3: three concepts, then choose (designer, then critic)
 
-Ask the designer for `acta/concepts.md`: three genuinely different concepts for this business, each built on the plan. Different means a different organising idea, not three colourways. For each concept:
+If `acta/concepts-feedback.md` exists, the owner rejected earlier concepts: read it first, and make the new three answer it.
+
+Ask the designer for `acta/concepts.md`: three genuinely different concepts for this business, each built on the plan. Different means a different organising idea, not three colourways. Give each concept its own heading in exactly this form: `## Concept 1: <Name>`, `## Concept 2: <Name>`, `## Concept 3: <Name>`. Put each concept's colours in the text as hex values. For each concept:
 - **Name and idea** in one line (for example "the window sign": the site reads like the shop's signage).
 - **Why it fits this business**, grounded in the reviews, the photos and the place.
 - **References** it draws on from the board (pins and galleries), and what exactly it borrows.
@@ -55,6 +59,11 @@ Ask the designer for `acta/concepts.md`: three genuinely different concepts for 
 - **Risk**: what could make it generic or wrong.
 
 Then ask the `critic` to score each concept 1 to 5 on: fits the plan's goal, true to the brand and photos, distinct from every site in `acta/research/previous-acta-sites.md`, distinct from local competitors, works on a phone. Append `## Scores` and `## Chosen`, with the winning concept and the reason, to `concepts.md`. A concept scoring under 3 on distinctness cannot win. Commit.
+
+**When the owner chooses.** If `acta/checkpoint.json` exists with `"concept": true`, the owner picks the concept, not the critic. Then:
+1. Append `## Scores` as above, and `## Agent's pick` (not `## Chosen`) naming the winner as `Concept <n>` with the one reason.
+2. Ask the designer for one static mock-up per concept at `acta/concepts/concept-<n>.html`: the home page hero and the first section after it, as that concept would build them, in one self-contained HTML file with inline CSS and no JavaScript. Use the real logo and real photos by relative path (`../../public/brand/...`) and the concept's type and colours; a Google Fonts link is fine. It must look like the concept, not a wireframe, and work at 390px and 1440px wide.
+3. Commit, then stop and end your turn. Do not start phase 4. The pipeline screenshots the mock-ups and asks the owner, who writes `## Chosen` (with an optional note you must follow). The next run resumes at phase 4.
 
 ## Phase 4: brief and theme (delegate to the `designer` subagent)
 

@@ -30,6 +30,7 @@ import { runWeek } from './loop/week.js';
 import { runDay } from './loop/day.js';
 import { installSchedule, scheduleStatus, uninstallSchedule } from './loop/schedule.js';
 import { doctor, formatDoctor } from './doctor.js';
+import { loadAutomation, OFF_HINT } from './loop/automation.js';
 
 const program = new Command();
 program.name('pipeline').description('Find Birmingham businesses that need a website, audit them, score them, shortlist them.');
@@ -214,6 +215,7 @@ program.command('build').description('Build a site for a business: gather its br
 program.command('sweep').description('Run the discovery searches that are due, best yield first, within the request budget (config/sweep.yaml)')
   .option('--dry-run', 'show the plan only').option('--budget <n>', 'override the request budget')
   .action(async (o) => {
+    if (!loadAutomation().sweep && !o.dryRun) { console.error(`The automatic sweep is off. ${OFF_HINT}`); process.exitCode = 1; return; }
     const r = await runSweep({ dryRun: o.dryRun, budget: o.budget ? Number(o.budget) : undefined });
     console.log(`${o.dryRun ? 'Would run' : 'Ran'} ${r.plan.run.length} searches, ${r.plan.estimatedRequests}/${r.plan.budget} requests${r.stoppedEarly ? `, stopped early: ${r.stoppedEarly}` : ''}`);
     for (const x of o.dryRun ? r.plan.run.map((p) => ({ query: p.query, found: p.cost, inserted: 0 })) : r.ran) console.log(`  ${x.query}${o.dryRun ? ` (${x.found} requests)` : `: ${x.found} found, ${x.inserted} new`}`);
@@ -230,6 +232,7 @@ program.command('searches').description('Every configured search with its runs, 
 program.command('pick').description('Pick leads to build: by slug, or --auto for the rule in config/pick.yaml')
   .argument('[slugs...]').option('--auto', 'apply the rule').option('--max <n>').option('--dry-run').option('--no-recheck', 'skip the fresh look at each site before picking')
   .action(async (slugs: string[], o) => {
+    if (o.auto && !loadAutomation().autoPick) { console.error(`The auto-picker is off. ${OFF_HINT}`); process.exitCode = 1; return; }
     if (o.auto) { console.log(explain(await autoPick({ max: o.max ? Number(o.max) : undefined, dryRun: o.dryRun, recheck: o.recheck }))); return; }
     if (!slugs.length) { console.error('Give slugs, or --auto'); process.exitCode = 1; return; }
     const r = pickManual(slugs);
@@ -238,7 +241,7 @@ program.command('pick').description('Pick leads to build: by slug, or --auto for
 
 program.command('unpick').argument('<slug>').action((slug: string) => { console.log(unpick(slug)); });
 
-program.command('week').description('The Sunday job: sweep, audit, score, leaderboard, pick. Writes out/REVIEW.md')
+program.command('week').description('The Sunday job: re-audit, score and refresh the leaderboard (plus sweep and auto-pick when switched on in config/build.yaml). Writes out/REVIEW.md')
   .option('--dry-run').option('--max <n>', 'picks').option('--skip-sweep')
   .action(async (o) => { console.log(await runWeek({ dryRun: o.dryRun, max: o.max ? Number(o.max) : undefined, skipSweep: o.skipSweep })); });
 
@@ -319,6 +322,101 @@ program.command('teardown').argument('<slug>').option('--keep-repo', 'leave the 
     if (!o.yes) { console.error('This removes the Vercel project and archives the repo. Add --yes to confirm.'); process.exitCode = 1; return; }
     for (const n of await teardown(slug, { keepRepo: o.keepRepo })) console.log(`  ${n}`);
   });
+
+// ---------- checkpoints, screenshots and the UI ----------
+
+program.command('photos').description('Sort the gathered photos for a build paused at the photo checkpoint, then continue it')
+  .argument('<slug>')
+  .option('--drop <list>', 'comma list of photo numbers to drop (the rest are kept)').option('--hero <n>', 'the hero photo')
+  .option('--skip', 'keep the automatic choice').option('--no-continue', 'save only, do not continue the build')
+  .action(async (slug: string, o) => {
+    const { listPhotos, saveCuration } = await import('./build/checkpoints.js');
+    const full = getFullLead(slug); if (!full) { console.error(`No lead ${slug}`); process.exitCode = 1; return; }
+    const b = getBuild(full.lead.id); const dir = b?.repo_dir ?? join(process.cwd(), 'sites', slug);
+    const photos = listPhotos(dir).filter((p) => !p.dropped);
+    if (!o.drop && !o.hero && !o.skip) { photos.forEach((p, i) => console.log(`  ${i + 1}. ${p.path} (${p.source}, ${p.width}x${p.height})`)); console.log('Then: pnpm pipeline photos <slug> --drop 3,5 --hero 1'); return; }
+    const nums = (s?: string) => new Set((s ?? '').split(',').map((x) => Number(x.trim())).filter(Boolean));
+    const drop = nums(o.drop), hero = Number(o.hero ?? 0);
+    const choices = photos.map((p, i) => ({ path: p.path, choice: (i + 1 === hero ? 'hero' : drop.has(i + 1) ? 'drop' : 'keep') as 'keep' | 'drop' | 'hero' }));
+    await saveCuration(dir, choices, { apply: b?.state === 'awaiting_photos', skipped: !!o.skip });
+    console.log(`Saved: ${choices.filter((c) => c.choice !== 'drop').length} kept, ${choices.filter((c) => c.choice === 'drop').length} dropped`);
+    if (o.continue !== false && b?.state === 'awaiting_photos') printOutcome(await buildLead(slug, buildOpts({}, budget())));
+  });
+
+program.command('concept').description('Choose one of the three concepts for a build paused at the concept checkpoint, then continue it')
+  .argument('<slug>').option('--choose <n>', 'the concept number; omit to keep the agent\'s pick').option('--note <text>', 'a note for the designer')
+  .option('--no-continue', 'save only, do not continue the build')
+  .action(async (slug: string, o) => {
+    const { chooseConcept, parseConcepts, readConceptsMd } = await import('./build/checkpoints.js');
+    const full = getFullLead(slug); if (!full) { console.error(`No lead ${slug}`); process.exitCode = 1; return; }
+    const b = getBuild(full.lead.id); const dir = b?.repo_dir ?? join(process.cwd(), 'sites', slug);
+    if (!o.choose && !o.note && process.argv.length <= 4) { for (const c of parseConcepts(readConceptsMd(dir))) console.log(`  ${c.index}. ${c.name}: ${c.idea.slice(0, 120)}`); return; }
+    const r = await chooseConcept(dir, o.choose ? Number(o.choose) : null, o.note ?? null);
+    console.log(`Chose concept ${r.index}: ${r.name}`);
+    if (o.continue !== false && b?.state === 'awaiting_concept') printOutcome(await buildLead(slug, buildOpts({}, budget())));
+  });
+
+program.command('shots').description('Full-page screenshots of every page of a built site, on phone, tablet and desktop, for the review studio').argument('<slug>')
+  .action(async (slug: string) => {
+    const { takePageShots } = await import('./ui/shots.js');
+    const r = await takePageShots(slug);
+    console.log(r.ok ? `${r.pages} pages captured` : `No screenshots: ${r.reason}`);
+    if (!r.ok) process.exitCode = 1;
+  });
+
+program.command('ui').description('Start the Acta UI on http://127.0.0.1:4321').option('--port <n>', 'port', '4321')
+  .action(async (o) => {
+    const { startServer } = await import('./ui/server.js');
+    const server = startServer(Number(o.port));
+    // The CLI exits when a command's promise settles, so the server's command waits until it's stopped.
+    await new Promise<void>((resolve) => { for (const sig of ['SIGINT', 'SIGTERM'] as const) process.once(sig, () => { server.close(); resolve(); }); });
+  });
+
+// ---------- outreach ----------
+
+const outreach = program.command('outreach').description('Send pitches and follow-ups, check replies and the sending domain (config/outreach.yaml)');
+outreach.command('status').description('How sending is set up, the warm-up limit, DNS, and follow-ups due').action(async () => {
+  const { outreachStatus, dueFollowUps } = await import('./outreach/index.js');
+  const s = await outreachStatus();
+  console.log(`Sending:   ${s.transportLabel}${s.from ? ` (from ${s.from})` : ''}`);
+  console.log(`Today:     ${s.cap.sentToday} of ${s.cap.today} emails (warm-up week ${s.cap.warmupWeek})`);
+  for (const c of s.dns ?? []) console.log(`DNS:       ${c.ok ? 'ok  ' : 'MISSING'} ${c.name}: ${c.detail}`);
+  for (const p of s.problems) console.log(`Note:      ${p}`);
+  const due = dueFollowUps();
+  console.log(`Follow-ups due: ${due.length}${due.length ? `\n${due.map((f) => `  ${f.name}: follow-up ${f.n} (${f.channel})`).join('\n')}` : ''}`);
+  console.log(`Replies:   ${s.replies.check ? `checked ${s.replies.lastCheckedAt ?? 'never'}${s.replies.lastError ? ` (${s.replies.lastError})` : ''}` : 'detection off'}`);
+});
+outreach.command('check').description('Check the sending domain\'s MX, SPF, DKIM and DMARC records').action(async () => {
+  const { dnsChecks } = await import('./outreach/index.js');
+  const checks = await dnsChecks(undefined, true);
+  for (const c of checks) console.log(`${c.ok ? 'ok     ' : 'MISSING'} ${c.name}: ${c.detail}`);
+  if (checks.some((c) => !c.ok)) process.exitCode = 1;
+});
+outreach.command('send').description('Send the approved pitch email for a business').argument('<slug>').option('--override', 'send even if today\'s warm-up limit is used')
+  .action(async (slug: string, o) => {
+    const { sendPitch } = await import('./outreach/index.js');
+    const { markSent } = await import('./delivery/index.js');
+    const m = await sendPitch(slug, { override: o.override });
+    markSent(slug, 'email');
+    console.log(m.status === 'written' ? 'Test mode: written to out/outbox' : `Sent to ${m.to_addr}`);
+  });
+outreach.command('followups').description('List follow-ups due; --send sends the due email ones within today\'s limit').option('--send')
+  .action(async (o) => {
+    const { dueFollowUps, doFollowUp, capState } = await import('./outreach/index.js');
+    const due = dueFollowUps();
+    if (!due.length) { console.log('No follow-ups due.'); return; }
+    for (const f of due) {
+      if (o.send && f.canEmail && capState().left > 0) {
+        try { await doFollowUp(f.slug, { mode: 'send' }); console.log(`sent     ${f.name}: follow-up ${f.n}`); } catch (e) { console.log(`not sent ${f.name}: ${(e as Error).message}`); }
+      } else console.log(`due      ${f.name}: follow-up ${f.n} (${f.channel})${f.canEmail ? '' : ' - by hand'}`);
+    }
+  });
+outreach.command('replies').description('Check the inbox through Proton Mail Bridge for replies').action(async () => {
+  const { checkReplies } = await import('./outreach/replies.js');
+  const r = await checkReplies();
+  console.log(r.error ?? `${r.checked} new messages, ${r.matched.length} from businesses: ${r.matched.map((m) => `${m.name} (${m.kind})`).join(', ') || 'none'}`);
+  if (r.error) process.exitCode = 1;
+});
 
 program.command('research').description('Manage the Pinterest session used for design research').option('--login', 'open a browser to log in to Pinterest and save the session')
   .action(async (o) => {

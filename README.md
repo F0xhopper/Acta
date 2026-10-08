@@ -57,7 +57,11 @@ Node 22.13 or newer and pnpm.
 pnpm install
 pnpm exec playwright install chromium
 cp .env.example .env
+cp config/offer.example.yaml config/offer.yaml
+pnpm --dir ui install && pnpm ui:build
 ```
+
+`config/offer.yaml` holds your name, phone, postal address and prices for the pitch emails. It stays on your machine (it's in `.gitignore`), like `.env`.
 
 Fill in `.env`:
 
@@ -112,6 +116,35 @@ The leaderboard refreshes on every `run`, `shortlist` and `status` change, so it
 
 Re-running a query updates listing data, skips audits fresher than 14 days, and never resets pipeline status. Anything you've marked contacted, won or lost stays off future shortlists. `lost` and `do_not_contact` also go on a suppression list.
 
+## The UI
+
+A local web app for the whole loop: what needs you, the pipeline board, leads, live builds, the review studio, before-and-after compare, and the pitch composer. It runs on your Mac only, with no login.
+
+```
+pnpm ui:build   # once, and after UI changes
+pnpm ui         # http://127.0.0.1:4321
+pnpm ui:dev     # while working on the UI: server plus hot reload on http://localhost:5173
+```
+
+Builds stop twice for you by default, set in `config/build.yaml`: after gathering, to sort the photos, and after the agent writes three concepts, to choose one. The same choices work from the terminal with `pnpm pipeline photos <slug>` and `pnpm pipeline concept <slug>`. Review comments flagged "also a pipeline rule" collect in `data/pipeline-rules.md`. The plan is in `docs/UI-PLAN.md`.
+
+## Sending pitches and follow-ups
+
+Settings are in `config/outreach.yaml`. Everything starts in the safest setting: you send by hand.
+
+- **Transport.** `manual` (copy into your mail app, then Mark as sent), `test` (writes each email to `out/outbox/`, sends nothing), `proton` (sends through Proton Mail Bridge on this Mac) or `resend`. Bridge's username and password, or a Resend key, go in `.env` as `PROTON_BRIDGE_USER`, `PROTON_BRIDGE_PASSWORD` or `RESEND_API_KEY`.
+- **Guards.** Acta only emails limited companies (PECR), never anyone on the do-not-contact list, never without your name, postal address and the opt-out line, and never before the sending domain's MX, SPF, DKIM and DMARC records pass. Pitches always need your click.
+- **Warm-up.** A daily limit starts at three emails and rises by three a week, up to twenty.
+- **Follow-ups.** Due on day 3 and day 8 after the pitch, three contacts at most. They appear in the Inbox; with `follow_ups.auto: true` and a sending transport, Acta sends email follow-ups itself on weekdays between 9 and 5, five minutes apart.
+- **Replies.** With `replies.check: true`, Acta reads your inbox through Bridge every ten minutes. A reply moves the business to Replied and stops its follow-ups. "No thanks" or "unsubscribe" puts it on the do-not-contact list.
+
+```
+pnpm pipeline outreach status          # transport, today's limit, DNS, follow-ups due
+pnpm pipeline outreach check           # the sending domain's MX, SPF, DKIM and DMARC
+pnpm pipeline outreach followups [--send]
+pnpm pipeline outreach replies
+```
+
 ## Building a site
 
 The build stage is separate from discovery. Give it a business name or a lead slug and it goes end to end: gathers the brand and facts, creates a private GitHub repo from the starter, researches the design, has a Claude Code agent design and build the site from a blank page, runs the gates, pushes, deploys a preview to Vercel, and produces the before-and-after picture.
@@ -156,7 +189,7 @@ Needs: the Claude Code CLI on this machine, `gh` logged in, and for deploys eith
 
 ## Running it automatically
 
-Discovery and picking run themselves. You review on Wednesday.
+**Switched off for now.** The automatic sweep and the auto-picker are off in `config/build.yaml` (`automation`). You search from the Leads page or with `pnpm pipeline run "<query>"`, and pick by hand with the Pick button or `pnpm pipeline pick <slug>`. `pnpm pipeline sweep` and `pick --auto` refuse while it's off, and the Sunday `week` job only re-audits, re-scores and refreshes the leaderboard. Everything below describes how they work when switched back on.
 
 ```
 pnpm pipeline doctor                 # every prerequisite, and whether the loop is allowed to run

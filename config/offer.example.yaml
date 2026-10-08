@@ -1,0 +1,18 @@
+# Copy this file to config/offer.yaml and fill in the [brackets]. config/offer.yaml holds your personal details and is not committed.
+sender:
+  name: "[Your name]"
+  trading_name: "[Your trading name]"
+  phone: "[Your phone]"
+  email: "[you@yourdomain.co.uk]"
+  website: "[yourdomain.co.uk]"
+  postal_address: "[Your postal address]"   # required in every marketing email (PECR)
+  area: "Birmingham"
+
+# Prices by site type (config/site-types.yaml). Build is one-off, monthly covers hosting and edits.
+prices:
+  default: { build: 395, monthly: 25 }
+  visual_craft: { build: 395, monthly: 25 }
+  hospitality: { build: 395, monthly: 25 }
+  trusted_trade: { build: 495, monthly: 30 }
+  professional: { build: 595, monthly: 35 }
+  fitness: { build: 395, monthly: 25 }

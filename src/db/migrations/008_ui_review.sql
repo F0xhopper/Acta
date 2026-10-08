@@ -1,0 +1,13 @@
+ALTER TABLE feedback ADD COLUMN rule INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE feedback ADD COLUMN resolved TEXT;
+ALTER TABLE feedback ADD COLUMN carried_from INTEGER;
+
+CREATE TABLE IF NOT EXISTS photo_verdicts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  slug TEXT NOT NULL,
+  path TEXT NOT NULL,
+  choice TEXT NOT NULL,
+  reason TEXT,
+  at TEXT NOT NULL,
+  UNIQUE(slug, path)
+);

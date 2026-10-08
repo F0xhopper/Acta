@@ -11,3 +11,8 @@ starter/.next/
 starter/acta/qa/
 starter/test-results/
 starter/playwright-report/
+ui/dist/
+ui/node_modules/
+
+# Your sender details (name, phone, postal address). Copy config/offer.example.yaml to start.
+config/offer.yaml
