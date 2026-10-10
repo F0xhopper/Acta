@@ -1,4 +1,4 @@
-import { ArrowDownLeft, ArrowUpRight, ChevronDown, Clock, MailCheck, RefreshCw, Send } from 'lucide-react';
+import { ArrowDownLeft, ArrowUpRight, ChevronDown, Clock, Eye, MailCheck, RefreshCw, Send } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import type { Delivery, FollowUp, OutreachMessage, OutreachStatus } from '../../../../src/ui/api-types';
 import { ApiError, useCheckReplies, useFollowUp, useLeadOutreach, useOutreach, useRecheckDns, useSendPitch } from '../../api';
@@ -82,6 +82,21 @@ export function SendEmailButton({ d, onSent }: { d: Delivery; onSent: () => void
         A new domain that sends too much too soon lands in spam folders. Waiting until tomorrow is safer.
       </Confirm>
     </>
+  );
+}
+
+/** One line: has a person opened the preview since the pitch? Separates "the offer didn't land" from "they never saw it". */
+export function PreviewOpensLine({ slug }: { slug: string }) {
+  const lo = useLeadOutreach(slug);
+  if (!lo.data) return null;
+  const { opens, opensTracked } = lo.data;
+  if (!opensTracked) return <p className="text-xs text-fg-3">Preview opens aren't counted: add UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN to .env</p>;
+  const n = opens?.opens ?? 0;
+  return (
+    <p className={cn('flex items-center gap-1.5 text-sm', n ? 'text-fg-2' : 'text-fg-3')}>
+      <Eye className="size-3.5 shrink-0" aria-hidden />
+      {n ? `Preview opened ${n === 1 ? 'once' : `${n} times`}${opens?.lastAt ? `, last ${timeAgo(opens.lastAt)}` : ''}` : 'Not opened yet'}
+    </p>
   );
 }
 

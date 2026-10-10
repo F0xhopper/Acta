@@ -1,9 +1,10 @@
 import { RefreshCw } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import type { Usage } from '../../../../src/ui/api-types';
 import { cn } from '../../lib/cn';
 import { timeAgo } from '../../lib/format';
+import { useDismiss } from '../../lib/use-dismiss';
 
 /** One usage bar: a fill, a hairline at the stop threshold, and the number. Colour only once it matters. */
 function Bar({ label, value, stopAt, warnAt }: { label: string; value: number | null; stopAt: number; warnAt: number }) {
@@ -43,13 +44,8 @@ export function UsageBars({ usage, refresh }: { usage: Usage | null | undefined;
 export function UsagePill({ usage }: { usage: Usage | null | undefined }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    const close = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) setOpen(false); };
-    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
-    document.addEventListener('mousedown', close); document.addEventListener('keydown', esc);
-    return () => { document.removeEventListener('mousedown', close); document.removeEventListener('keydown', esc); };
-  }, [open]);
+  const close = useCallback(() => setOpen(false), []);
+  useDismiss(ref, open, close);
   const top = usage ? Math.max(usage.session ?? 0, usage.week ?? 0) : null;
   const known = usage && (usage.session !== null || usage.week !== null);
   const tone = !known ? 'text-fg-4' : top! >= usage!.stopAt ? 'text-bad' : top! >= usage!.warnAt ? 'text-warn' : 'text-fg-2';

@@ -1,7 +1,8 @@
 /**
  * acta build: a picked lead to a reviewed, deployed preview, one recorded step at a time.
  */
-import { existsSync, readFileSync, writeFileSync, copyFileSync, mkdirSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, copyFileSync, mkdirSync, rmSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
 import { join, dirname } from 'node:path';
 import { envInt } from '../config.js';
 import { getFullLead, setStatus } from '../db/queries.js';
@@ -23,11 +24,15 @@ import { resolveLead } from './resolve.js';
 import { siteContentSource } from './site-content.js';
 import { STEP_TARGET, STEPS, stepsFrom, type Step } from './state.js';
 import { checkUniqueness } from './unique.js';
+import { describeSignature } from './signature.js';
 import { resolveSiteType } from './site-type.js';
 import { writePreviousSites } from './previous.js';
 import { colourWord } from './gather/colours.js';
 import { run } from './exec.js';
-import { conceptChosen, conceptsWritten, loadCheckpoints, Paused, photosCurated, renderConceptMockups, setConceptCheckpoint } from './checkpoints.js';
+import { collectInspiration } from './inspiration.js';
+import { chooseConcept, conceptChosen, conceptsWritten, loadCheckpoints, Paused, photosCurated, renderConceptMockups, setConceptCheckpoint } from './checkpoints.js';
+import { needsCall } from '../pick/call.js';
+import { consentOf } from '../pick/queries.js';
 
 export interface BuildOpts {
   budget: Budget;
@@ -62,6 +67,13 @@ async function stepGather(ctx: Ctx) {
 async function stepRepo(ctx: Ctx) {
   const api = await loadGather();
   ctx.gather ??= await api.gather(ctx.full, { log: (m) => ctx.log.info('gather', m) });
+  // Before a rebuild wipes the site, tag the current version so it can always be brought back.
+  if (ctx.opts.force && existsSync(join(siteDir(ctx.slug), '.git'))) {
+    const tag = `before-rebuild-${new Date().toISOString().slice(0, 10)}`;
+    await commitAll(siteDir(ctx.slug), 'chore: snapshot before rebuild');
+    await run('git', ['tag', '-f', tag], { cwd: siteDir(ctx.slug) });
+    ctx.log.info('repo', `rebuilding from scratch; the previous version is tagged ${tag}`);
+  }
   const dir = copyStarter(ctx.slug, ctx.opts.force);
   ctx.dir = dir;
   api.copyIntoRepo(ctx.gather, dir);
@@ -103,8 +115,29 @@ async function stepResearch(ctx: Ctx) {
   const r = await api.researchLead(brand, facts, join(ctx.dir, SITE_PATHS.research), { sessionPath, queries, log: (m) => ctx.log.info('research', m) });
   ctx.log.info('research', `${r.pins} pins from ${r.queries.length} searches${r.fallback ? ' (Pinterest unavailable, used fallback)' : ''} -> ${r.boardPath}`);
   updateBuild(ctx.full.lead.id, { research_fallback: r.fallback ? 1 : 0 });
+  // Practical references: real sites of the same trade elsewhere, plus template and award galleries.
+  const siteType = existsSync(typeFile) ? (readJson<{ name?: string }>(typeFile).name ?? 'default') : 'default';
+  const insp = await collectInspiration({
+    trade: facts.business.category_label.toLowerCase(), siteType, homeCity: ctx.full.lead.area || 'Birmingham', seed: ctx.slug,
+    outDir: join(ctx.dir, SITE_PATHS.research), budget: ctx.opts.budget, log: (m) => ctx.log.info('research', m),
+  });
+  for (const n of insp.notes) ctx.log.warn('research', n);
   await commitAll(ctx.dir, 'chore: research board');
 }
+
+/**
+ * The agent's conversation, kept while it's paused at the usage limit. Resuming carries on that same conversation, with
+ * everything it had read and decided, instead of starting /build again and paying for the same work twice.
+ */
+interface AgentSession { id: string; prompt: string; started: boolean; at: string }
+const sessionPath = (slug: string) => join(buildDir(slug), 'agent-session.json');
+export function savedSession(slug: string): AgentSession | null {
+  try { return readJson<AgentSession>(sessionPath(slug)); } catch { return null; }
+}
+const saveSession = (slug: string, s: AgentSession) => writeFileSync(sessionPath(slug), JSON.stringify(s, null, 2));
+const clearSession = (slug: string) => rmSync(sessionPath(slug), { force: true });
+const resumePrompt = (prompt: string) => `You were stopped part-way through ${prompt} because the Claude usage limit was reached. Carry on from exactly where you stopped. `
+  + 'Check git log, git status and the files in acta/ for what is already done, do not redo finished work, and finish the task as the original instructions say.';
 
 async function stepAgent(ctx: Ctx, prompt = '/build') {
   await ensureGit(ctx.dir);
@@ -119,20 +152,38 @@ async function stepAgent(ctx: Ctx, prompt = '/build') {
   const conceptStop = prompt === '/build' && loadCheckpoints().concept && !conceptChosen(ctx.dir);
   setConceptCheckpoint(ctx.dir, conceptStop);
   const resultPath = join(buildDir(ctx.slug), `agent-${prompt.replace('/', '')}-${Date.now()}.json`);
-  const r = await runAgent(ctx.dir, { prompt, maxTurns: ctx.opts.maxTurns ?? envInt('BUILD_MAX_TURNS', 400), maxMinutes: ctx.opts.maxMinutes ?? envInt('BUILD_MAX_MINUTES', 240), resultPath, log: (m) => ctx.log.info('agent', m) });
+  const saved = savedSession(ctx.slug);
+  const resume = !!saved?.started && saved.prompt === prompt;
+  const id = resume || (saved && !saved.started && saved.prompt === prompt) ? saved!.id : randomUUID();
+  if (resume) ctx.log.info('agent', `resuming the conversation paused at the usage limit (${saved!.at.slice(0, 16).replace('T', ' ')})`);
+  const agentOpts = { maxTurns: ctx.opts.maxTurns ?? envInt('BUILD_MAX_TURNS', 400), maxMinutes: ctx.opts.maxMinutes ?? envInt('BUILD_MAX_MINUTES', 240), resultPath, log: (m: string) => ctx.log.info('agent', m) };
+  saveSession(ctx.slug, { id, prompt, started: resume, at: new Date().toISOString() });
+  let r = await runAgent(ctx.dir, { ...agentOpts, prompt: resume ? resumePrompt(prompt) : prompt, session: { id, resume } });
+  if (resume && !r.ok && !r.paused && /no conversation found/i.test(r.message)) {
+    ctx.log.warn('agent', 'the paused conversation is gone; starting the step again, from the work committed so far');
+    const fresh = randomUUID();
+    saveSession(ctx.slug, { id: fresh, prompt, started: false, at: new Date().toISOString() });
+    r = await runAgent(ctx.dir, { ...agentOpts, prompt, session: { id: fresh, resume: false } });
+  }
+  if (r.paused) saveSession(ctx.slug, { ...savedSession(ctx.slug)!, started: r.started || resume, at: new Date().toISOString() });
+  else clearSession(ctx.slug);
   const left = await commitAll(ctx.dir, 'wip: changes left uncommitted by the agent');
   if (left) ctx.log.warn('agent', 'committed changes the agent left uncommitted');
   updateBuild(ctx.full.lead.id, { agent_result_path: resultPath, agent_turns: r.turns, agent_seconds: r.seconds, agent_cost_usd: r.costUsd, head_sha: await headSha(ctx.dir), built_at: new Date().toISOString() });
-  if (!r.ok) {
-    const limit = /session limit|usage limit|rate limit|resets? \d/i.test(r.message);
-    throw new Error(limit
-      ? `paused: ${r.message.slice(0, 200)}. Work so far is committed; run the same build command after the reset and it continues from the artefacts in acta/.`
-      : `agent ${r.timedOut ? 'timed out' : 'failed'}: ${r.message.slice(0, 400)}`);
-  }
-  if (conceptStop && !conceptChosen(ctx.dir) && conceptsWritten(ctx.dir)) {
-    const n = await renderConceptMockups(ctx.dir, (m) => ctx.log.warn('agent', m));
-    await commitAll(ctx.dir, 'chore: concept mock-up screenshots');
-    throw new Paused('awaiting_concept', `three concepts written${n ? ` with ${n} mock-ups` : ''}; waiting for you to choose one`);
+  if (r.paused) throw new Paused('awaiting_usage', `${r.message.slice(0, 200)}. The conversation is saved and carries on where it stopped once usage is back under the limit`);
+  if (!r.ok) throw new Error(`agent ${r.timedOut ? 'timed out' : 'failed'}: ${r.message.slice(0, 400)}`);
+  if (!conceptChosen(ctx.dir) && conceptsWritten(ctx.dir)) {
+    if (loadCheckpoints().concept) {
+      const n = await renderConceptMockups(ctx.dir, (m) => ctx.log.warn('agent', m));
+      await commitAll(ctx.dir, 'chore: concept mock-up screenshots');
+      throw new Paused('awaiting_concept', `three concepts written${n ? ` with ${n} mock-ups` : ''}; waiting for you to choose one`);
+    }
+    // The concept checkpoint is off (or was switched off mid-build) but the agent stopped after its concepts:
+    // take its own pick and carry on, rather than waiting for a choice nobody is going to make.
+    const c = await chooseConcept(ctx.dir, null, null).catch(() => chooseConcept(ctx.dir, 1, null));
+    ctx.log.info('agent', `concept chosen automatically: ${c.index}, ${c.name}`);
+    setConceptCheckpoint(ctx.dir, false);
+    return stepAgent(ctx, prompt);
   }
   setConceptCheckpoint(ctx.dir, false);
   if (!existsSync(join(ctx.dir, SITE_PATHS.buildLog))) ctx.log.warn('agent', 'no build log written');
@@ -161,28 +212,35 @@ async function stepGate(ctx: Ctx) {
   if (!g.passed) throw new Error(`gates failed: ${g.failing.join(' | ')}${g.error ? ` (${g.error})` : ''}`);
   ctx.log.info('gate', `passed: ${g.report?.gates.map((x) => x.name).join(', ')}`);
 
-  const shots = await takeShots(ctx.dir, (m) => ctx.log.warn('gate', m));
-  if (shots) {
-    const u = await checkUniqueness(ctx.slug, shots.hero, shots.mobile);
-    if (!u.unique && ctx.opts.agent !== false) {
-      ctx.log.warn('gate', `too similar to ${u.nearest?.slug} (hero ${u.nearest?.hero.toFixed(2)}, page ${u.nearest?.page.toFixed(2)}); asking for a different layout`);
-      writeFile(ctx.dir, SITE_PATHS.reviewNotes, `# Not unique enough\n\nThe home page looks too much like another Acta site (${u.nearest?.slug}). Change the layout concept: different hero composition, section order and rhythm. Keep the brand.\n`);
-      await commitAll(ctx.dir, 'chore: uniqueness note');
-      await stepAgent(ctx, '/revise');
-      const g2 = await runGates(ctx.dir, { fast: ctx.opts.fastGates, log: (m) => ctx.log.info('gate', m) });
-      if (!g2.passed) throw new Error(`gates failed after uniqueness revision: ${g2.failing.join(' | ')}`);
-      const s2 = await takeShots(ctx.dir);
-      const u2 = s2 ? await checkUniqueness(ctx.slug, s2.hero, s2.mobile) : u;
-      if (!u2.unique) throw new Error(`still too similar to ${u2.nearest?.slug}`);
-    } else if (u.nearest) ctx.log.info('gate', `unique: nearest ${u.nearest.slug} at ${Math.max(u.nearest.hero, u.nearest.page).toFixed(2)}`);
-    else ctx.log.info('gate', 'unique: first site built');
-  }
+  // Screenshots for the evidence pack and the previous-sites memory; the gate's own QA slices come from the same run.
+  await takeShots(ctx.dir, (m) => ctx.log.warn('gate', m));
+  // Its own design, or a sibling of a site already built? Signatures, not pixels: same type, ground and hero read as the same site.
+  const u = checkUniqueness(ctx.slug, ctx.dir);
+  ctx.log.info('gate', `signature: ${describeSignature(u.signature)}`);
+  if (!u.unique && ctx.opts.agent !== false) {
+    ctx.log.warn('gate', `too close to ${u.nearest!.slug}: ${u.nearest!.reasons.join('; ')}; asking for a different design`);
+    writeFile(ctx.dir, SITE_PATHS.reviewNotes, [
+      '# Too close to another Acta site', '',
+      `This site shares too much with "${u.nearest!.name}": ${u.nearest!.reasons.join('; ')}.`, '',
+      'Change what is shared until no more than one of these matches: a different heading family (and body family), a different hero composition, or a different ground and primary. Keep the brand and every fact.',
+      'Update the Signature block in acta/brief.md and src/theme.ts to match, rebuild the affected sections, re-run pnpm shots and pnpm gate, and note the change in acta/build-log.md.', '',
+    ].join('\n'));
+    await commitAll(ctx.dir, 'chore: uniqueness note');
+    await stepAgent(ctx, '/revise');
+    const g2 = await runGates(ctx.dir, { fast: ctx.opts.fastGates, log: (m) => ctx.log.info('gate', m) });
+    if (!g2.passed) throw new Error(`gates failed after uniqueness revision: ${g2.failing.join(' | ')}`);
+    await takeShots(ctx.dir);
+    const u2 = checkUniqueness(ctx.slug, ctx.dir);
+    if (!u2.unique) throw new Error(`still too close to ${u2.nearest!.slug}: ${u2.nearest!.reasons.join('; ')}`);
+  } else if (u.nearest) ctx.log.info('gate', `unique: nearest ${u.nearest.slug} shares ${u.nearest.reasons.join(', ') || 'nothing'}`);
+  else ctx.log.info('gate', 'unique: first site built');
   updateBuild(ctx.full.lead.id, { gate_json_path: join(ctx.dir, SITE_PATHS.gate), head_sha: await headSha(ctx.dir) });
 }
 
 async function stepPush(ctx: Ctx) {
   if (ctx.opts.sandbox) { ctx.log.info('push', 'sandbox: nothing pushed'); return; }
   await pushMain(ctx.dir);
+  await run('git', ['push', 'origin', '--tags'], { cwd: ctx.dir }); // the before-rebuild tag, if any; best effort
   ctx.log.info('push', `pushed ${(await headSha(ctx.dir)).slice(0, 7)} to origin/main`);
   // CI for this exact commit. Not awaited: the pipeline has already run the same gates locally; CI is the Linux record.
   const sha = await headSha(ctx.dir);
@@ -240,6 +298,7 @@ export async function buildLead(input: string, opts: BuildOpts): Promise<BuildOu
   const log = buildLogger(full.lead.id, slug);
   let row: BuildRow = ensureBuild(full.lead.id);
   if (opts.force && row.state !== 'picked') { setBuildState(full.lead.id, 'picked'); row = getBuild(full.lead.id)!; }
+  if (opts.force || opts.from) clearSession(slug);
   const ctx: Ctx = { full, slug, dir: row.repo_dir ?? siteDir(slug), log, opts };
   const steps = opts.from ? STEPS.slice(STEPS.indexOf(opts.from)) : stepsFrom(row.state, row.failed_step);
   if (opts.from && !existsSync(ctx.dir)) throw new Error(`--from ${opts.from}: no site repo at ${ctx.dir}; run a full build first`);
@@ -248,6 +307,16 @@ export async function buildLead(input: string, opts: BuildOpts): Promise<BuildOu
     console.log(`Would run for ${full.lead.name} (${slug}), currently ${row.state}: ${steps.join(' -> ') || 'nothing, already preview_ready'}`);
     console.log(`  sandbox=${!!opts.sandbox} agent=${opts.agent !== false} research=${opts.research !== false} deploy=${opts.deploy ?? (!opts.sandbox && avail.ok)} (${avail.detail})`);
     return { slug, name: full.lead.name, state: row.state, repoUrl: row.repo_url, previewUrl: row.preview_url, evidence: row.evidence_path, dir: ctx.dir, error: null };
+  }
+  // The call checkpoint: for anyone who can't be cold emailed, nothing is built until they've said yes on the phone.
+  if (!opts.from && ['picked', 'awaiting_call'].includes(row.state)) {
+    if (loadCheckpoints().call && needsCall(full) && consentOf(full.lead.id)?.answer !== 'yes') {
+      if (row.state !== 'awaiting_call') setBuildState(full.lead.id, 'awaiting_call');
+      log.info(null, 'waiting for your call before the build (Overview tab, or pnpm pipeline call <slug> yes|no)');
+      writeLeaderboard();
+      return { slug, name: full.lead.name, state: 'awaiting_call', repoUrl: row.repo_url, previewUrl: row.preview_url, evidence: row.evidence_path, dir: ctx.dir, error: null };
+    }
+    if (row.state === 'awaiting_call') { setBuildState(full.lead.id, 'picked'); row = getBuild(full.lead.id)!; }
   }
   // A build paused at a checkpoint stays paused until you've answered, unless a step is named explicitly.
   if (!opts.from && row.state === 'awaiting_photos' && !photosCurated(ctx.dir)) {
@@ -258,10 +327,16 @@ export async function buildLead(input: string, opts: BuildOpts): Promise<BuildOu
     log.info(null, 'waiting for you to choose a concept (UI Concepts tab, or pnpm pipeline concept)');
     return { slug, name: full.lead.name, state: row.state, repoUrl: row.repo_url, previewUrl: row.preview_url, evidence: row.evidence_path, dir: ctx.dir, error: null };
   }
+  // Resuming from a checkpoint: the build is no longer waiting for you, so say so straight away rather than
+  // when the next step finishes (otherwise the inbox keeps asking for a choice that's already been made).
+  if (!opts.from && row.state === 'awaiting_photos') setBuildState(full.lead.id, 'repo_ready');
+  if (!opts.from && row.state === 'awaiting_concept') setBuildState(full.lead.id, 'researched');
   if (!steps.length) log.info(null, `already ${row.state}, nothing to do (use --force to rebuild)`);
   else { log.info(null, `starting at ${steps[0]} (${steps.length} steps)`); setStatus(slug, 'building'); }
   // A rejected build goes back to the agent with the review note: that is the revise skill, not a fresh build.
-  const revising = row.state === 'revising';
+  // A revise paused at the usage limit is still a revise.
+  const revising = row.state === 'revising' || (row.state === 'awaiting_usage' && row.failed_step === 'agent' && savedSession(slug)?.prompt === '/revise');
+  if (row.state === 'awaiting_usage') log.info(null, `resuming after the usage pause, at ${steps[0]}`);
   for (const step of steps) {
     const max = MAX_ATTEMPTS[step];
     let attempt = 0;
@@ -277,7 +352,8 @@ export async function buildLead(input: string, opts: BuildOpts): Promise<BuildOu
         if (step === 'repo' && !revising && loadCheckpoints().photos && !photosCurated(ctx.dir) && hasPhotos(ctx.dir)) throw new Paused('awaiting_photos', 'photos gathered; waiting for you to keep, drop or pick the hero');
       } catch (e) {
         if (e instanceof Paused) {
-          setBuildState(full.lead.id, e.state);
+          // A usage pause can come in any step that runs the agent: it resumes in that step.
+          setBuildState(full.lead.id, e.state, e.state === 'awaiting_usage' ? { failed_step: step, last_error: e.message } : {});
           log.info(step, `paused: ${e.message}`);
           writeLeaderboard();
           const b = getBuild(full.lead.id);
@@ -296,6 +372,7 @@ export async function buildLead(input: string, opts: BuildOpts): Promise<BuildOu
     }
   }
   const final = getBuild(full.lead.id)!;
+  clearSession(slug);
   writeLeaderboard();
   return { slug, name: full.lead.name, state: final.state, repoUrl: final.repo_url, previewUrl: final.preview_url, evidence: final.evidence_path, dir: ctx.dir, error: null };
 }

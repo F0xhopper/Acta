@@ -1,5 +1,6 @@
 /**
- * The Sunday job: sweep, audit, entity, score, yields, leaderboard, pick. Writes out/REVIEW.md for Monday morning.
+ * The Sunday job: re-audit, entity, score, yields, leaderboard, pick. Writes out/REVIEW.md for Monday morning.
+ * Discovery itself runs daily in src/loop/leads.ts.
  */
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -8,13 +9,13 @@ import { auditMany } from '../audit/index.js';
 import { enrichEntities } from '../discover/entity.js';
 import { scoreAll } from '../score/score.js';
 import { writeLeaderboard } from '../report/leaderboard.js';
-import { runSweep, updateYields } from '../sweep/index.js';
+import { updateYields } from '../sweep/index.js';
 import { autoPick, explain, pickedQueue } from '../pick/index.js';
 import { doctor, doctorOk, formatDoctor } from '../doctor.js';
 import { log } from '../util/log.js';
 import { loadAutomation } from './automation.js';
 
-export interface WeekOpts { dryRun?: boolean; max?: number; skipSweep?: boolean }
+export interface WeekOpts { dryRun?: boolean; max?: number }
 
 export async function runWeek(opts: WeekOpts = {}): Promise<string> {
   const checks = await doctor();
@@ -27,14 +28,7 @@ export async function runWeek(opts: WeekOpts = {}): Promise<string> {
   const lines: string[] = [`# Week of ${started.toISOString().slice(0, 10)}`, ''];
 
   const auto = loadAutomation();
-  const sweep = opts.skipSweep || !auto.sweep ? null : await runSweep({ dryRun: opts.dryRun });
-  if (!auto.sweep) lines.push('## Sweep', '', 'Off: searches are run by hand (config/build.yaml, automation).', '');
-  if (sweep) {
-    lines.push(`## Sweep${opts.dryRun ? ' (dry run)' : ''}`, '', `${sweep.plan.run.length} searches due, ${sweep.plan.estimatedRequests} of ${sweep.plan.budget} requests${sweep.stoppedEarly ? `, stopped early: ${sweep.stoppedEarly}` : ''}.`, '');
-    if (sweep.ran.length) { lines.push('| Search | Found | New |', '|---|---|---|', ...sweep.ran.map((r) => `| ${r.query} | ${r.found} | ${r.inserted} |`), ''); }
-    else lines.push(...sweep.plan.run.map((r) => `- would run: ${r.query} (${r.cost} requests)`), '');
-    if (sweep.plan.skipped.length) lines.push(`Skipped: ${sweep.plan.skipped.slice(0, 8).map((s) => `${s.query} (${s.why})`).join('; ')}${sweep.plan.skipped.length > 8 ? ' …' : ''}`, '');
-  }
+  lines.push('## Discovery', '', auto.sweep ? 'Runs daily (`pnpm pipeline leads`, the com.acta.leads job). Today\'s batch is in out/NEW-LEADS.md.' : 'Off: searches are run by hand (config/build.yaml, automation).', '');
 
   if (!opts.dryRun) {
     const a = await auditMany({});

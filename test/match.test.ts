@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { matchCompany } from '../src/discover/match.js';
+import { matchCompany, promoteBySic, sicAgrees } from '../src/discover/match.js';
 import { nameSimilarity, normaliseName } from '../src/util/slug.js';
 
 describe('names', () => {
@@ -40,5 +40,20 @@ describe('matchCompany', () => {
   });
   it('none when nothing is close', () => {
     expect(matchCompany(lead, [{ title: 'ZED ROOFING LTD', company_number: '9', company_status: 'active' }]).confidence).toBe('none');
+  });
+});
+
+describe('SIC codes', () => {
+  it('agree when the company does the trade', () => {
+    expect(sicAgrees(['43220', '43210'], ['43220'])).toBe(true);
+    expect(sicAgrees(['96020'], ['43220'])).toBe(false);
+    expect(sicAgrees(undefined, ['43220'])).toBe(false);
+    expect(sicAgrees(['43220'], [])).toBe(false);
+  });
+  it('lift a medium match to high, and leave anything else alone', () => {
+    const medium = { confidence: 'medium' as const, similarity: 0.9, item: { title: 'ACME PLUMBING LTD', company_number: '1' } };
+    expect(promoteBySic(medium, ['43220'], ['43220'])).toMatchObject({ confidence: 'high', via: 'sic' });
+    expect(promoteBySic(medium, ['96020'], ['43220']).confidence).toBe('medium');
+    expect(promoteBySic({ confidence: 'low', similarity: 0.7 }, ['43220'], ['43220']).confidence).toBe('low');
   });
 });

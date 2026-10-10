@@ -1,5 +1,6 @@
 import { loadCategories, type Category } from '../config.js';
 import { slugify } from '../util/slug.js';
+import { homeMarket, loadMarkets, marketFor, type Market } from './areas.js';
 
 export interface ParsedQuery {
   raw: string;
@@ -7,6 +8,7 @@ export interface ParsedQuery {
   categoryKey: string;
   category: Category | undefined;
   area: string;
+  market: Market | undefined;   // the configured market the area is in; undefined for anywhere else
   textQuery: string;
 }
 
@@ -23,23 +25,33 @@ export function resolveCategory(words: string, categories: Category[] = loadCate
   return best?.cat;
 }
 
+const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 /**
- * "plumbers in Erdington" -> category "plumbers", area "Erdington".
- * "cafes near Moseley"    -> category "cafes", area "Moseley".
- * "barbers"               -> category "barbers", area "Birmingham".
+ * "plumbers in Erdington"        -> category "plumbers", area "Erdington", market Birmingham.
+ * "cafes near Moseley"           -> category "cafes", area "Moseley".
+ * "barbers"                      -> category "barbers", area: the home market (the first active one in config/areas.yaml).
+ * "cafes in Didsbury, Manchester" -> area "Didsbury, Manchester", no configured market: searched as written, no postcode filter.
  */
-export function parseQuery(raw: string, categories: Category[] = loadCategories()): ParsedQuery {
+export function parseQuery(raw: string, categories: Category[] = loadCategories(), markets: Market[] = loadMarkets()): ParsedQuery {
   const cleaned = raw.replace(/\s+/g, ' ').trim();
   if (!cleaned) throw new Error('Query is empty');
+  const home = homeMarket(markets);
+  const names = [...markets.map((m) => esc(m.name)), ...(markets.some((m) => m.key === 'birmingham') ? ['brum'] : [])];
   const m = cleaned.match(/^(.*?)\s+(?:in|near|around)\s+(.+)$/i);
-  const categoryRaw = (m ? m[1] : cleaned).trim().replace(/[\s,]+(birmingham|brum)$/i, '').trim() || (m ? m[1] : cleaned).trim();
-  let area = (m ? m[2] : 'Birmingham').trim().replace(/,?\s*(uk|england|united kingdom)$/i, '').trim();
-  const mentionsBirmingham = /birmingham/i.test(area);
-  const areaLabel = area.replace(/,?\s*birmingham$/i, '').trim() || 'Birmingham';
+  const trailingCity = new RegExp(`[\\s,]+(${names.join('|')})$`, 'i');
+  const categoryRaw = (m ? m[1] : cleaned).trim().replace(trailingCity, '').trim() || (m ? m[1] : cleaned).trim();
+  const named = !m ? (cleaned.match(trailingCity)?.[1] ?? null) : null;
+  const area = (m ? m[2] : named ?? home?.name ?? 'UK').trim().replace(/,?\s*(uk|england|scotland|wales|united kingdom)$/i, '').trim();
+  // "Moseley, Birmingham" -> Moseley in the Birmingham market; "Moseley" -> looked up in the neighbourhood lists.
+  const suffixed = markets.find((mk) => new RegExp(`,?\\s*${esc(mk.name)}$`, 'i').test(area) && area.toLowerCase() !== mk.name.toLowerCase());
+  const areaLabel = suffixed ? area.replace(new RegExp(`,?\\s*${esc(suffixed.name)}$`, 'i'), '').trim() : area;
+  const market = suffixed ?? marketFor(areaLabel, markets);
   const category = resolveCategory(categoryRaw, categories);
   const categoryKey = category?.key ?? slugify(categoryRaw);
-  const textQuery = mentionsBirmingham && areaLabel === 'Birmingham'
-    ? `${categoryRaw} in Birmingham, UK`
-    : `${categoryRaw} in ${areaLabel}, Birmingham, UK`;
-  return { raw: cleaned, categoryRaw, categoryKey, category, area: areaLabel, textQuery };
+  const label = market && areaLabel.toLowerCase() === market.name.toLowerCase() ? market.name : areaLabel;
+  const textQuery = !market ? `${categoryRaw} in ${label}, UK`
+    : label === market.name ? `${categoryRaw} in ${market.name}, UK`
+    : `${categoryRaw} in ${label}, ${market.name}, UK`;
+  return { raw: cleaned, categoryRaw, categoryKey, category, area: label, market, textQuery };
 }

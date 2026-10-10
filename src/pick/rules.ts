@@ -1,66 +1,48 @@
 import { findCategory } from '../config.js';
+import { contentOf } from '../score/content.js';
 import type { FullLead } from '../db/types.js';
 import type { PickConfig } from './config.js';
+import { gradeLead, missing, type Grade } from './grade.js';
+import { NO_LEARNING, type TradeLearning } from './trade.js';
 
-export interface Candidate { full: FullLead; buildability: number; buildabilityParts: string[]; pickScore: number; reasons: string[] }
-export interface Skip { slug: string; name: string; why: string }
+export interface Candidate { full: FullLead; grade: Grade; buildability: number; buildabilityParts: string[]; pickScore: number; reasons: string[] }
+export interface Skip { slug: string; name: string; why: string; gates?: string[] }   // gates: the ones it failed
 export interface WeekPick { category_key: string; area: string }
 
-/** 0 to 100: how much there is to build a good site from tonight. */
-export function buildability(full: FullLead, cfg: PickConfig): { score: number; parts: string[] } {
-  const b = cfg.buildability;
-  const parts: string[] = [];
-  let s = 0;
-  const photos = full.lead.photo_count ?? 0;
-  if (photos >= 8) { s += b.photos_8; parts.push(`${photos} photos`); }
-  else if (photos >= 3) { s += b.photos_3; parts.push(`${photos} photos`); }
-  else if (photos >= 1) { s += b.photos_1; parts.push(`${photos} photo${photos > 1 ? 's' : ''}`); }
-  else parts.push(full.lead.photo_count === null ? 'photos unknown' : 'no photos');
-  if (full.audit?.website_status === 'live') { s += b.has_live_site; parts.push('live site to take brand from'); }
-  if (full.lead.editorial_summary || full.audit?.site_description) { s += b.has_description; parts.push('description'); }
-  let withText = 0;
-  try { withText = ((JSON.parse(full.lead.reviews_json ?? '[]') as { text?: string }[]).filter((r) => (r.text ?? '').length >= 40)).length; } catch { /* none */ }
-  if (withText >= 3) { s += b.reviews_with_text_3; parts.push(`${withText} reviews with text`); }
-  if (full.lead.opening_hours_json) { s += b.hours_listed; parts.push('hours'); }
-  return { score: Math.min(100, s), parts };
+/** 0 to 100: how much there is to build a good site from: the content score, with what's there. */
+export function buildability(full: FullLead): { score: number; parts: string[] } {
+  const c = contentOf(full, findCategory(full.lead.category_key));
+  return { score: c.score, parts: c.items.filter((i) => i.have !== 'no').map((i) => `${i.label.toLowerCase()}: ${i.detail}`) };
 }
 
 const daysSince = (iso: string | null | undefined) => (iso ? (Date.now() - new Date(iso).getTime()) / 86_400_000 : Number.POSITIVE_INFINITY);
 
-/** Hard filters. Every rejection has a reason the operator can read. */
-export function filterCandidates(fulls: FullLead[], cfg: PickConfig, alreadyPicked: Set<number>, multipliers: Map<string, number> = new Map()): { eligible: Candidate[]; skipped: Skip[] } {
-  const f = cfg.filters;
+/**
+ * The gates (src/pick/grade.ts) over every new lead: the ones that pass, ranked by grade (whose trade part has
+ * learned from your pitches); the near misses, one gate short; and every other lead with the reason it was left out.
+ * `freshDays` (auto-pick) also skips leads whose audit is older than that.
+ */
+export function filterCandidates(fulls: FullLead[], cfg: PickConfig, alreadyPicked: Set<number>, learn: TradeLearning = NO_LEARNING, opts: { freshDays?: number } = {}): { eligible: Candidate[]; near: Candidate[]; skipped: Skip[] } {
   const eligible: Candidate[] = [];
+  const near: Candidate[] = [];
   const skipped: Skip[] = [];
   for (const full of fulls) {
-    const { lead, audit, score, ch, pipeline } = full;
-    const skip = (why: string) => skipped.push({ slug: lead.slug, name: lead.name, why });
+    const { lead, audit, pipeline } = full;
+    const skip = (why: string, gates?: string[]) => skipped.push({ slug: lead.slug, name: lead.name, why, ...(gates ? { gates } : {}) });
     if (pipeline.status !== 'new') { skip(`status ${pipeline.status}`); continue; }
     if (alreadyPicked.has(lead.id)) { skip('already picked'); continue; }
-    if (!score) { skip('not scored'); continue; }
-    if (!f.tiers.includes(score.tier)) { skip(score.tier === 'X' ? `excluded: ${score.excluded_reason}` : `tier ${score.tier}`); continue; }
-    if (!audit) { skip('not audited'); continue; }
-    if (daysSince(audit.audited_at) > f.audit_fresh_days) { skip(`audit is ${Math.round(daysSince(audit.audited_at))} days old`); continue; }
-    if ((lead.review_count ?? 0) < f.min_reviews) { skip(`${lead.review_count ?? 0} reviews, needs ${f.min_reviews}`); continue; }
-    if (daysSince(lead.last_review_at) > f.max_review_age_days) { skip(lead.last_review_at ? `latest review ${Math.round(daysSince(lead.last_review_at))} days ago` : 'no review dates'); continue; }
-    if (!findCategory(lead.category_key)) { skip(`category "${lead.category_key}" not configured`); continue; }
-    if (lead.photo_count === null ? !f.allow_unknown_photos : lead.photo_count < f.min_photos) { skip(`${lead.photo_count ?? 'unknown'} photos, needs ${f.min_photos}`); continue; }
-    if (f.require_contact && !lead.phone_e164 && ch?.match_confidence !== 'high') { skip('no phone and not a limited company'); continue; }
-    const b = buildability(full, cfg);
-    const ltd = ch?.match_confidence === 'high';
-    const mult = multipliers.get(lead.category_key) ?? 1;
-    const pickScore = Math.round((cfg.score.lead_weight * score.total + cfg.score.buildability_weight * b.score + (ltd ? cfg.score.ltd_bonus : 0)) * mult);
-    const reasons = [
-      `tier ${score.tier}, score ${score.total}`,
-      `${lead.review_count} reviews at ${lead.rating}, latest ${Math.round(daysSince(lead.last_review_at))} days ago`,
-      `buildability ${b.score} (${b.parts.join(', ')})`,
-      ltd ? 'limited company, email route' : 'phone or walk-in route',
-    ];
-    if (mult !== 1) reasons.push(`category multiplier ${mult.toFixed(2)} from outcomes`);
-    eligible.push({ full, buildability: b.score, buildabilityParts: b.parts, pickScore, reasons });
+    if (opts.freshDays !== undefined && audit && daysSince(audit.audited_at) > opts.freshDays) { skip(`audit is ${Math.round(daysSince(audit.audited_at))} days old`); continue; }
+    const grade = gradeLead(full, cfg, findCategory(lead.category_key), learn);
+    const failedGates = grade.failed.map((f) => f.label);
+    if (grade.verdict === 'fail') { skip(missing(grade), failedGates); continue; }
+    const b = buildability(full);
+    const reasons = [`grade ${grade.score}`, ...grade.parts.map((p) => `${p.label} ${p.points}/${p.max}: ${p.detail}`)];
+    const c: Candidate = { full, grade, buildability: b.score, buildabilityParts: b.parts, pickScore: grade.score, reasons };
+    if (grade.verdict === 'pass') eligible.push(c);
+    else { near.push(c); skip(`near miss: ${missing(grade)}`, failedGates); }
   }
-  eligible.sort((a, b) => b.pickScore - a.pickScore || (b.full.lead.review_count ?? 0) - (a.full.lead.review_count ?? 0));
-  return { eligible, skipped };
+  const order = (a: Candidate, b: Candidate) => b.pickScore - a.pickScore || (b.full.lead.review_count ?? 0) - (a.full.lead.review_count ?? 0);
+  return { eligible: eligible.sort(order), near: near.sort(order), skipped };
 }
 
 /** Caps so previews never compete with each other on one street, and the week stays inside the build budget. */
@@ -86,17 +68,4 @@ export function applyDiversity(eligible: Candidate[], cfg: PickConfig, thisWeek:
     if (walkIn) perAreaWalkIn.set(lead.area, (perAreaWalkIn.get(lead.area) ?? 0) + 1);
   }
   return { picked, skipped };
-}
-
-/** Slow learning from outcomes: a category's reply-or-win rate against the overall rate, once it has five contacts. */
-export function outcomeMultipliers(stats: { category_key: string; contacted: number; positive: number }[]): { multipliers: Map<string, number>; overall: number | null } {
-  const total = stats.reduce((a, s) => a + s.contacted, 0);
-  if (!total) return { multipliers: new Map(), overall: null };
-  const overall = stats.reduce((a, s) => a + s.positive, 0) / total;
-  const m = new Map<string, number>();
-  for (const s of stats) {
-    if (s.contacted < 5) continue;
-    m.set(s.category_key, Math.max(0.7, Math.min(1.3, 1 + (s.positive / s.contacted - overall))));
-  }
-  return { multipliers: m, overall };
 }

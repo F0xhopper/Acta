@@ -17,8 +17,21 @@
   --radius-sm: var(--radius-sm);
   --radius-md: var(--radius-md);
   --radius-lg: var(--radius-lg);
+  /* The scale from theme.type and theme.layout: text-display, text-h1, text-h2, text-h3, text-body, text-small,
+     text-eyebrow, px-gutter, py-section, gap-section, max-w-container, max-w-measure. */
+  --text-display: var(--text-display);
+  --text-h1: var(--text-h1);
+  --text-h2: var(--text-h2);
+  --text-h3: var(--text-h3);
+  --text-body: var(--text-body);
+  --text-small: var(--text-small);
+  --text-eyebrow: var(--text-eyebrow);
+  --spacing-gutter: var(--gutter);
+  --spacing-section: var(--section);
+  --container-container: var(--container);
+  --container-measure: var(--measure);
 }
 
 html { background: var(--background); color: var(--text); }
-body { font-family: var(--font-body), system-ui, sans-serif; }
+body { font-family: var(--font-body), system-ui, sans-serif; font-size: var(--text-body); }
 h1, h2, h3, h4 { font-family: var(--font-heading), system-ui, sans-serif; }

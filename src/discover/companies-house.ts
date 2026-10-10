@@ -24,6 +24,7 @@ export interface CHProfile {
   company_status?: string;
   type?: string;
   sic_codes?: string[];
+  date_of_creation?: string;
   registered_office_address?: { postal_code?: string };
 }
 

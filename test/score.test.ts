@@ -30,9 +30,14 @@ describe('scoreLead', () => {
     expect(s.viability).toBe(35 + 15 + 5 + 10 + 15);
     expect(JSON.parse(s.reasons_json)[0]).toBe('No website on Google listing');
   });
-  it('limited company gets email channel and a viability bump', () => {
-    const s = scoreLead(full({}, {}, 'high'), scoring, cat);
+  it('limited company with an email on its site gets the email channel and a viability bump', () => {
+    const s = scoreLead(full({}, { emails_json: '["info@acme.co.uk"]' }, 'high'), scoring, cat);
     expect(s.channel).toBe('email'); expect(s.viability).toBe(35 + 15 + 5 + 10 + 15 + 10);
+  });
+  it('limited company with no email found is not given the email channel', () => {
+    const s = scoreLead(full({}, {}, 'high'), scoring, cat);
+    expect(s.channel).not.toBe('email');
+    expect(JSON.parse(s.reasons_json)).toContain('Limited company, but no email found: call or walk in first');
   });
   it('adequate live site is excluded', () => {
     const s = scoreLead(full({}, { website_status: 'live', https_ok: 1, has_viewport: 1, lh_perf: 92, lh_seo: 95, has_local_schema: 1, title: 'Acme', meta_desc_len: 50, phone_matches_listing: 1 }), scoring, cat);
@@ -68,13 +73,30 @@ describe('scoreLead', () => {
     const s = scoreLead(full({ review_count: 6, rating: 5 }), scoring, cat);
     expect(s.tier).toBe('C'); expect(s.viability).toBeGreaterThanOrEqual(scoring.thresholds.tier_min_viability);
   });
-  it('rewards recent reviews and marks stale ones', () => {
+  it('rewards recent reviews and marks stale ones, but only trusts review dates under 30 reviews', () => {
     const recent = scoreLead(full({ last_review_at: new Date(Date.now() - 30 * 86_400_000).toISOString() }), scoring, cat);
-    const stale = scoreLead(full({ last_review_at: '2022-01-01T00:00:00Z' }), scoring, cat);
-    const none = scoreLead(full(), scoring, cat);
-    expect(recent.viability).toBe(none.viability + 10);
+    const stale = scoreLead(full({ review_count: 20, last_review_at: '2022-01-01T00:00:00Z' }), scoring, cat);
+    const none = scoreLead(full({ review_count: 20 }), scoring, cat);
+    expect(recent.viability).toBe(scoreLead(full(), scoring, cat).viability + 10);
     expect(stale.viability).toBe(none.viability - 15);
     expect(JSON.parse(stale.reasons_json).join(' ')).toMatch(/winding down/);
+    // 40 reviews: Google's five shown reviews are the most relevant, not the newest, so an old date means nothing.
+    const busyOld = scoreLead(full({ last_review_at: '2022-01-01T00:00:00Z' }), scoring, cat);
+    expect(busyOld.viability).toBe(scoreLead(full(), scoring, cat).viability);
+  });
+  it('reviews gained between sightings count as active whatever the dates say', () => {
+    const f = full({ review_count: 20, last_review_at: '2022-01-01T00:00:00Z' });
+    const growing = scoreLead({ ...f, velocity: { gained: 2, days: 30, firstAt: '2026-09-01T00:00:00Z', lastAt: '2026-10-01T00:00:00Z', sightings: 2 } }, scoring, cat);
+    expect(growing.viability).toBe(scoreLead(full({ review_count: 20 }), scoring, cat).viability + 10);
+    expect(JSON.parse(growing.reasons_json).join(' ')).toMatch(/2 new reviews/);
+  });
+  it('a live site below the adequate line stays in when it shows its age', () => {
+    const wix = scoreLead(full({}, { website_status: 'live', https_ok: 1, has_viewport: 1, lh_perf: 45, builder: 'wix', lh_seo: 90, has_local_schema: 1, title: 'Acme', meta_desc_len: 50 }), scoring, cat);
+    expect(wix.opportunity).toBeLessThan(scoring.thresholds.adequate_site_opportunity);
+    expect(wix.tier).toBe('C'); expect(wix.excluded_reason).toBeNull();
+    expect(JSON.parse(wix.reasons_json).join(' ')).toMatch(/Already pays for a site/);
+    const modern = scoreLead(full({}, { website_status: 'live', https_ok: 1, has_viewport: 1, lh_perf: 60, builder: 'wordpress', lh_seo: 90, has_local_schema: 1, title: 'Acme', meta_desc_len: 50 }), scoring, cat);
+    expect(modern.excluded_reason).toBe('Site is adequate');
   });
   it('walk-in categories route to walk_in', () => {
     const s = scoreLead(full({ category_key: 'barber' }), scoring, findCategory('barber'));

@@ -36,7 +36,6 @@ export interface PlaceReview {
   publishTime?: string;
 }
 
-export const BIRMINGHAM = { latitude: 52.4862, longitude: -1.8904 };
 const SEARCH_URL = 'https://places.googleapis.com/v1/places:searchText';
 const FIELD_MASK = [
   'places.id', 'places.displayName', 'places.formattedAddress', 'places.addressComponents', 'places.location',
@@ -92,6 +91,8 @@ export interface SearchOpts {
   budget: Budget;
   dryRun?: boolean;
   onRequest?: () => void;
+  /** Bias results towards a market's centre. Without one, Google goes by the words in the query alone. */
+  centre?: { latitude: number; longitude: number };
   radiusM?: number;
 }
 
@@ -122,8 +123,8 @@ export async function searchText(textQuery: string, opts: SearchOpts): Promise<P
         regionCode: 'GB',
         languageCode: 'en-GB',
         pageSize: 20,
-        locationBias: { circle: { center: BIRMINGHAM, radius: opts.radiusM ?? 15000 } },
       };
+      if (opts.centre) body.locationBias = { circle: { center: opts.centre, radius: opts.radiusM ?? 15000 } };
       if (pageToken) body.pageToken = pageToken;
       data = await placesPost(SEARCH_URL, body, FIELD_MASK);
       writeCache(cacheKey, data);

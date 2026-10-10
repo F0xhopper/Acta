@@ -95,10 +95,14 @@ export async function savePhoto(url: string, dest: string): Promise<{ width: num
   }
 }
 
-/** JPEG under the site's 300 KB image budget, stepping down size and quality until it fits. */
-export async function encodePhotoUnderBudget(buf: Buffer, max = 280 * 1024) {
-  let out = await sharp(buf).rotate().resize({ width: 1600, withoutEnlargement: true }).jpeg({ quality: 82, mozjpeg: true }).toBuffer({ resolveWithObject: true });
-  for (const [width, quality] of [[1600, 72], [1400, 68], [1200, 64], [1000, 60], [900, 55]] as const) {
+/**
+ * A JPEG master for next/image to serve from: 2400px wide at high quality, so a full-width hero stays sharp on a
+ * retina desktop. The site never serves this file directly; the images gate measures what a phone is served.
+ * Steps down only when a master gets heavy for the repo.
+ */
+export async function encodePhotoUnderBudget(buf: Buffer, max = 900 * 1024) {
+  let out = await sharp(buf).rotate().resize({ width: 2400, withoutEnlargement: true }).jpeg({ quality: 84, mozjpeg: true }).toBuffer({ resolveWithObject: true });
+  for (const [width, quality] of [[2400, 78], [2000, 76], [1800, 74], [1600, 72]] as const) {
     if (out.data.length <= max) break;
     out = await sharp(buf).rotate().resize({ width, withoutEnlargement: true }).jpeg({ quality, mozjpeg: true }).toBuffer({ resolveWithObject: true });
   }

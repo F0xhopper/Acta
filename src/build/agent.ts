@@ -3,8 +3,12 @@ import { join } from 'node:path';
 import { run } from './exec.js';
 import { overLimit, readUsage, usageThreshold } from './usage.js';
 
-export interface AgentOpts { prompt: string; maxTurns: number; maxMinutes: number; resultPath: string; log?: (m: string) => void }
-export interface AgentResult { ok: boolean; turns: number | null; seconds: number; costUsd: number | null; message: string; timedOut: boolean; raw: string }
+/** `session`: the conversation id. New runs start it with that id; `resume` carries on an earlier, paused one. */
+export interface AgentOpts { prompt: string; maxTurns: number; maxMinutes: number; resultPath: string; session?: { id: string; resume: boolean }; log?: (m: string) => void }
+/** `paused`: stopped at the usage limit (ours or Claude's own), so the conversation can be resumed rather than restarted. */
+export interface AgentResult { ok: boolean; turns: number | null; seconds: number; costUsd: number | null; message: string; timedOut: boolean; raw: string; paused: boolean; started: boolean }
+
+const CLAUDE_LIMIT = /session limit|usage limit|rate limit|resets? \d/i;
 
 export const ALLOWED_TOOLS = [
   'Read', 'Edit', 'Write', 'MultiEdit', 'Glob', 'Grep', 'LS', 'Agent', 'Skill', 'TodoWrite', 'WebFetch',
@@ -13,7 +17,7 @@ export const ALLOWED_TOOLS = [
 ];
 
 /** A clean environment: no pipeline tokens reach the agent. It keeps only what a shell needs, plus Claude's own config. */
-function cleanEnv(): NodeJS.ProcessEnv {
+export function cleanEnv(): NodeJS.ProcessEnv {
   const keep = ['PATH', 'HOME', 'USER', 'SHELL', 'LANG', 'LC_ALL', 'TERM', 'TMPDIR', 'CLAUDE_CONFIG_DIR', 'XDG_CONFIG_HOME', 'NODE_OPTIONS'];
   const out: NodeJS.ProcessEnv = {};
   for (const k of keep) if (process.env[k]) out[k] = process.env[k];
@@ -28,8 +32,9 @@ function cleanEnv(): NodeJS.ProcessEnv {
 /** Run Claude Code headlessly inside a site repo. */
 export async function runAgent(dir: string, opts: AgentOpts): Promise<AgentResult> {
   const say = opts.log ?? (() => undefined);
-  const args = ['-p', opts.prompt, '--output-format', 'json', '--max-turns', String(opts.maxTurns), '--allowedTools', ALLOWED_TOOLS.join(',')];
-  say(`claude ${args.slice(0, 2).join(' ')} (max ${opts.maxTurns} turns, ${opts.maxMinutes} min)`);
+  const session = opts.session ? (opts.session.resume ? ['--resume', opts.session.id] : ['--session-id', opts.session.id]) : [];
+  const args = ['-p', opts.prompt, ...session, '--output-format', 'json', '--max-turns', String(opts.maxTurns), '--allowedTools', ALLOWED_TOOLS.join(',')];
+  say(`claude -p ${opts.session?.resume ? `(resuming ${opts.session.id.slice(0, 8)})` : opts.prompt} (max ${opts.maxTurns} turns, ${opts.maxMinutes} min)`);
   // Usage guard: poll the subscription's usage and stop the agent before it reaches the threshold.
   const threshold = usageThreshold();
   let stoppedFor: string | null = null;
@@ -39,7 +44,7 @@ export async function runAgent(dir: string, opts: AgentOpts): Promise<AgentResul
     const over = overLimit(before, threshold);
     if (over) {
       writeFileSync(opts.resultPath, `not started: ${over}`);
-      return { ok: false, turns: 0, seconds: 0, costUsd: null, message: `paused: usage limit guard, ${over}, threshold ${threshold}%`, timedOut: false, raw: '' };
+      return { ok: false, turns: 0, seconds: 0, costUsd: null, message: `usage limit guard, ${over}, threshold ${threshold}%`, timedOut: false, raw: '', paused: true, started: false };
     }
   }
   const child = { pid: 0 };
@@ -49,10 +54,14 @@ export async function runAgent(dir: string, opts: AgentOpts): Promise<AgentResul
     if (!u) return;
     say(`usage: session ${u.session ?? '?'}%, week ${u.week ?? '?'}%`);
     const over = overLimit(u, threshold);
-    if (over && child.pid) {
+    if (over && child.pid && !stoppedFor) {
       stoppedFor = over;
       say(`usage guard: ${over}, stopping the agent`);
-      try { process.kill(-child.pid, 'SIGTERM'); } catch { /* gone */ }
+      // SIGINT, like Ctrl+C: Claude Code saves the conversation up to the last step, so a resume loses nothing.
+      // SIGTERM can drop the last steps from the saved conversation. It's only the fallback.
+      const pid = child.pid;
+      try { process.kill(-pid, 'SIGINT'); } catch { /* gone */ }
+      setTimeout(() => { try { process.kill(-pid, 'SIGTERM'); } catch { /* gone */ } }, 30_000).unref();
     }
   };
   guard = setInterval(() => { void poll(); }, 3 * 60_000);
@@ -60,7 +69,7 @@ export async function runAgent(dir: string, opts: AgentOpts): Promise<AgentResul
   if (guard) clearInterval(guard);
   if (stoppedFor) {
     writeFileSync(opts.resultPath, r.stdout || r.stderr || `stopped: ${stoppedFor}`);
-    return { ok: false, turns: null, seconds: r.seconds, costUsd: null, message: `paused: usage limit guard, ${stoppedFor}, threshold ${threshold}%`, timedOut: false, raw: r.stdout };
+    return { ok: false, turns: null, seconds: r.seconds, costUsd: null, message: `usage limit guard, ${stoppedFor}, threshold ${threshold}%`, timedOut: false, raw: r.stdout, paused: true, started: true };
   }
   writeFileSync(opts.resultPath, r.stdout || r.stderr);
   let parsed: Record<string, unknown> | null = null;
@@ -72,14 +81,17 @@ export async function runAgent(dir: string, opts: AgentOpts): Promise<AgentResul
   }
   const isError = parsed ? Boolean(parsed.is_error) : true;
   const message = parsed ? String(parsed.result ?? parsed.error ?? '') : (r.stderr || r.stdout).trim().split('\n').slice(-5).join(' | ');
+  const ok = r.code === 0 && !r.timedOut && !isError;
   const out: AgentResult = {
-    ok: r.code === 0 && !r.timedOut && !isError,
+    ok,
     turns: parsed && typeof parsed.num_turns === 'number' ? parsed.num_turns : null,
     seconds: r.seconds,
     costUsd: parsed && typeof parsed.total_cost_usd === 'number' ? parsed.total_cost_usd : null,
     message: message.slice(0, 2000),
     timedOut: r.timedOut,
     raw: r.stdout,
+    paused: !ok && CLAUDE_LIMIT.test(message),
+    started: true,
   };
   say(`agent ${out.ok ? 'finished' : 'failed'} in ${out.seconds}s${out.turns !== null ? `, ${out.turns} turns` : ''}${out.timedOut ? ', timed out' : ''}`);
   return out;

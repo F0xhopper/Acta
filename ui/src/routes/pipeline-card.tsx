@@ -1,12 +1,13 @@
 import { useDraggable, useDroppable } from '@dnd-kit/core';
-import { ChevronLeft, ChevronRight, GripVertical, MoreHorizontal } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ExternalLink, GripVertical, MoreHorizontal, Star } from 'lucide-react';
 import { useMemo, type ReactNode } from 'react';
 import { Link } from 'react-router';
 import type { BoardCard, BoardColumn } from '../../../src/ui/api-types';
 import { Dot, TierMark } from '../components/ui/chip';
 import { Menu } from '../components/ui/menu';
 import { cn } from '../lib/cn';
-import { age, COLUMN_LABEL } from '../lib/format';
+import { age, COLUMN_LABEL, SITE_STATUS_LABEL } from '../lib/format';
+import { ReachChip } from '../components/reach';
 
 /** One business on the board. Pointer drag from anywhere on the card; keyboard drag from the grip; "Move to" menu for everything. */
 export function BoardCardView({ card, column, onMove, overlay }: { card: BoardCard; column: BoardColumn; onMove: (card: BoardCard, from: BoardColumn, to: BoardColumn) => void; overlay?: boolean }) {
@@ -38,10 +39,26 @@ export function BoardCardView({ card, column, onMove, overlay }: { card: BoardCa
           </div>
         ) : null}
       </div>
-      <div className="mt-2.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-fg-3">
+      {card.stageLine ? (
+        <p className="mt-2 flex items-center gap-1.5 text-xs text-fg"><Dot tone={card.stageLine.tone} />{card.stageLine.text}</p>
+      ) : null}
+      {card.hook ? <p className="mt-1.5 line-clamp-2 text-xs leading-relaxed text-fg-3" title={card.hook}>{card.hook}</p> : null}
+      <dl className="mt-2 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-fg-2">
+        {card.rating !== null ? <div className="inline-flex items-center gap-1"><dt className="sr-only">Rating</dt><Star className="size-3 text-fg-3" aria-hidden /><dd>{card.rating.toFixed(1)} <span className="text-fg-3">({card.reviews})</span></dd></div> : null}
+        {card.websiteStatus ? <div><dt className="sr-only">Website</dt><dd>{SITE_STATUS_LABEL[card.websiteStatus] ?? card.websiteStatus}</dd></div> : null}
+        <div><dt className="sr-only">Reach</dt><dd><ReachChip reach={card.reach} /></dd></div>
+      </dl>
+      <div className="mt-2 flex flex-wrap items-center gap-x-2.5 gap-y-1 border-t border-border-soft pt-2 text-xs text-fg-3">
         <TierMark tier={card.tier} />
+        {card.score !== null ? <span title="Lead score out of 100">{card.score}</span> : null}
         {card.since ? <span title="Time in this column">{age(card.since)}</span> : null}
         {card.badge ? <span className="inline-flex items-center gap-1.5 text-fg-2"><Dot tone={card.badge.tone} />{card.badge.text}</span> : null}
+        {card.previewUrl && !overlay ? (
+          <a href={card.previewUrl} target="_blank" rel="noreferrer" draggable={false} onPointerDown={(e) => e.stopPropagation()}
+            className="relative z-10 ml-auto inline-flex items-center gap-1 rounded-full px-1.5 text-fg-2 hover:text-fg" title="Open the preview site">
+            Preview<ExternalLink className="size-3" aria-hidden />
+          </a>
+        ) : null}
       </div>
     </article>
   );

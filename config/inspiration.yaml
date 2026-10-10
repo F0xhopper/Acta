@@ -1,0 +1,85 @@
+# Where the designer looks for ideas, collected in the research step and saved as screenshots in
+# acta/research/ so the agent can look at them. Craft sets the bar: hand-picked sites with studio-level
+# type, space and imagery. Structure references (real sites of the same trade) show what sections a
+# visitor expects and are never the style guide.
+
+# How many references the designer picks, by kind.
+mix:
+  craft: 5
+  structure: 3
+
+# Hand-picked sites with a high design bar, captured in full (phone, desktop, and the first three
+# desktop screens) so the designer sees real pages, not thumbnails. Every build gets the list for its
+# site type plus a rotating pair from `any`. Add or swap freely; `note` says what to look at.
+curated:
+  max_per_build: 8
+  from_any: 2
+  visual_craft:
+    - { name: Ruffians, url: "https://www.ruffians.co.uk", note: "Barbers. Confident wordmark, big photography of the room, prices and booking without clutter." }
+    - { name: Murdock London, url: "https://www.murdocklondon.com", note: "Barbers. Editorial type, generous margins, one accent, photos of the work at full width." }
+    - { name: Pankhurst London, url: "https://www.pankhurstlondon.com", note: "Barbers. Dark and luxurious without being heavy; see how little sits in the hero." }
+    - { name: Blind Barber, url: "https://www.blindbarber.com", note: "Barbers. One strong idea carried through every section; menu and locations stay simple." }
+    - { name: Hershesons, url: "https://www.hershesons.com", note: "Salon. Calm scale, lots of air, services as a readable list rather than cards." }
+    - { name: Bleach London, url: "https://www.bleachlondon.com", note: "Salon. Bold colour owned with confidence; look at the type scale on desktop." }
+    - { name: Nomad Barber, url: "https://www.nomadbarber.com", note: "Barbers. Dark, photographic, few words; prices and booking stay one tap away." }
+    - { name: Gentlemens Tonic, url: "https://www.gentlemenstonic.com", note: "Grooming. Calm serif, lots of air, the room photographed like a hotel." }
+  hospitality:
+    - { name: Bancone, url: "https://www.bancone.co.uk", note: "Restaurant. Minimal, type-led, the dishes do the talking; look at the desktop margins." }
+    - { name: Ottolenghi, url: "https://ottolenghi.co.uk", note: "Deli and restaurant. Warm photography, a confident wordmark, menus that read well on a phone." }
+    - { name: Noble Rot, url: "https://www.noblerot.co.uk", note: "Wine bar. Editorial serif, one colour, big photos, nothing competing with the booking action." }
+    - { name: Honest Burgers, url: "https://www.honestburgers.co.uk", note: "Restaurant. Warm, plain, local; the menu page is a model of clarity on a phone." }
+    - { name: Caravan, url: "https://www.caravanrestaurants.co.uk", note: "Café and restaurant. Full-bleed photography and quiet type; look at section rhythm on desktop." }
+    - { name: Padella, url: "https://www.padella.co", note: "Restaurant. Almost nothing but the food and the hours; proof that restraint sells." }
+  trusted_trade:
+    - { name: Garden Club London, url: "https://www.gardenclublondon.co.uk", note: "Landscaper. Project photography treated like a portfolio; services as a plain list." }
+    - { name: Bowles and Wyer, url: "https://www.bowleswyer.co.uk", note: "Landscaper. Calm, spacious, serif headings; the desktop grid is worth studying." }
+    - { name: Plus Rooms, url: "https://www.plusrooms.co.uk", note: "Builder. A trade site that looks like a studio: before and after, prices, one call to action." }
+    - { name: Resi, url: "https://www.resi.co.uk", note: "Architecture service. Clear steps, confident type, real numbers; a model for 'how a job goes'." }
+    - { name: Build Team, url: "https://www.buildteam.com", note: "Builder. Large project photos, plain language, a quote action that is always one tap away." }
+    - { name: Housekeep, url: "https://housekeep.com", note: "Cleaning. Friendly, simple, mobile-first; prices and booking in the first screen." }
+  professional:
+    - { name: The Modern House, url: "https://www.themodernhouse.com", note: "Estate agent. The best type and photography in the category; study the desktop margins." }
+    - { name: Inigo, url: "https://inigo.com", note: "Estate agent. Editorial serif, muted palette, every page composed like a magazine." }
+    - { name: Farewill, url: "https://farewill.com", note: "Legal service. Warm, plain, trustworthy; prices and steps shown without jargon." }
+    - { name: Crunch, url: "https://www.crunch.co.uk", note: "Accountants. Clear packages and prices, calm colour, nothing stock." }
+    - { name: Ten Health and Fitness, url: "https://www.ten.co.uk", note: "Physio and pilates. Quiet, expert, real premises; a model for clinics." }
+    - { name: Tend, url: "https://www.hellotend.com", note: "Dentist. Modern, calm, photographic; booking first, credentials second." }
+  fitness:
+    - { name: Blok, url: "https://www.bloklondon.com", note: "Gym. Monochrome photography, big type, little else; the timetable is still easy." }
+    - { name: Psycle, url: "https://www.psyclelondon.com", note: "Studio. Energy from scale and colour, not effects; booking is one tap." }
+    - { name: Third Space, url: "https://www.thirdspace.london", note: "Gym. Premium through photography and space; membership and locations stay clear." }
+    - { name: Gymbox, url: "https://www.gymbox.com", note: "Gym. Loud colour and type used with discipline; class list and prices still readable." }
+    - { name: Ten Health and Fitness, url: "https://www.ten.co.uk", note: "Studio. Calm and expert; a model for coaching that sells on trust, not hype." }
+  # Any build may draw on these: craft from outside the trade.
+  any:
+    - { name: The Modern House, url: "https://www.themodernhouse.com", note: "Type, margins and photography as a system; study how sections are paced on desktop." }
+    - { name: Toast, url: "https://www.toa.st", note: "Restrained type, photography with air around it, one quiet accent." }
+    - { name: Labour and Wait, url: "https://www.labourandwait.co.uk", note: "Plain, warm, hand-made feel without being twee; a model for family businesses." }
+    - { name: Inigo, url: "https://inigo.com", note: "How an editorial serif and a muted palette hold across many pages without repeating themselves." }
+    - { name: Farewill, url: "https://farewill.com", note: "Warmth and clarity for a serious service; look at the step-by-step sections." }
+
+# Structure references: real, highly rated businesses of the same trade in other UK cities, with their own
+# working website. Found with the Places API (one request per city, cached), then screenshotted. These show
+# which sections a visitor expects and how prices, hours and the call action are placed. Never the style.
+real_sites:
+  cities: [London, Manchester, Bristol, Leeds, Brighton, Edinburgh, Glasgow, Nottingham]
+  per_build: 2            # cities searched per build, rotated so builds see different sites
+  min_rating: 4.6
+  min_reviews: 80
+  max_sites: 3
+
+# Galleries, screenshotted for the trade and kind of site. {trade} is the business type ("barber") and
+# {awwwards} comes from the site type below. Template catalogues are out: they pull the design toward a
+# template. Land-book, Lapa Ninja and SiteInspire block automated access, Godly didn't respond.
+galleries:
+  - { name: Awwwards by industry, kind: craft, url: "https://www.awwwards.com/websites/{awwwards}/" }
+  - { name: Awwwards, kind: craft, url: "https://www.awwwards.com/websites/?text={trade}" }
+  - { name: One Page Love, kind: structure, url: "https://onepagelove.com/?s={trade}" }
+
+site_types:
+  visual_craft: { awwwards: health-beauty }
+  hospitality: { awwwards: food-drink }
+  trusted_trade: { awwwards: architecture }
+  professional: { awwwards: business-corporate }
+  fitness: { awwwards: sports }
+  default: { awwwards: business-corporate }

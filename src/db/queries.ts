@@ -1,7 +1,7 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { openDb } from './index.js';
 import { isoNow } from '../util/dates.js';
-import type { AuditRow, CompaniesHouseRow, FullLead, LeadInput, LeadRow, PipelineRow, PipelineStatus, ScoreRow } from './types.js';
+import type { AuditRow, CompaniesHouseRow, FullLead, LeadInput, LeadRow, PipelineRow, PipelineStatus, ReviewVelocity, ScoreRow } from './types.js';
 
 const d = (): DatabaseSync => openDb();
 
@@ -18,6 +18,7 @@ export function upsertLead(input: LeadInput): { id: number; inserted: boolean } 
   if (existing) {
     d().prepare(`UPDATE leads SET ${LISTING_COLS.map((c) => `${c}=?`).join(', ')}, last_seen_at=? WHERE id=?`)
       .run(...LISTING_COLS.map(val), now as never, existing.id as never);
+    recordSighting(existing.id, now, input.review_count, input.rating);
     return { id: existing.id, inserted: false };
   }
   let slug = input.slug;
@@ -28,7 +29,26 @@ export function upsertLead(input: LeadInput): { id: number; inserted: boolean } 
   const res = d().prepare(`INSERT INTO leads (${cols.join(',')}) VALUES (${cols.map(() => '?').join(',')})`).run(...values);
   const id = Number(res.lastInsertRowid);
   d().prepare('INSERT INTO pipeline (lead_id, status, updated_at) VALUES (?, ?, ?)').run(id, 'new', now);
+  recordSighting(id, now, input.review_count, input.rating);
   return { id, inserted: true };
+}
+
+// ---------- review history ----------
+
+/** One row per sighting of the listing. Google's five reviews are the most relevant, not the newest, so the count over time is the activity signal. */
+export function recordSighting(leadId: number, seenAt: string, reviewCount: number | null, rating: number | null) {
+  if (reviewCount === null || reviewCount === undefined) return;
+  d().prepare('INSERT OR IGNORE INTO review_history (lead_id, seen_at, review_count, rating) VALUES (?,?,?,?)').run(leadId, seenAt, reviewCount, rating);
+}
+
+/** Reviews gained between the first and the latest sighting, or null with fewer than two sightings. */
+export function reviewVelocity(leadId: number): ReviewVelocity | null {
+  const rows = d().prepare('SELECT seen_at, review_count FROM review_history WHERE lead_id = ? ORDER BY seen_at').all(leadId) as unknown as { seen_at: string; review_count: number }[];
+  if (rows.length < 2) return null;
+  const first = rows[0];
+  const last = rows[rows.length - 1];
+  const days = Math.max(0, (Date.parse(last.seen_at) - Date.parse(first.seen_at)) / 86_400_000);
+  return { gained: last.review_count - first.review_count, days: Math.round(days), firstAt: first.seen_at, lastAt: last.seen_at, sightings: rows.length };
 }
 
 export function getLeadBySlug(slug: string): LeadRow | undefined {
@@ -114,19 +134,22 @@ export function getCompaniesHouse(leadId: number): CompaniesHouseRow | undefined
 }
 
 export function saveCompaniesHouse(r: CompaniesHouseRow) {
-  d().prepare(`INSERT INTO companies_house (lead_id, company_number, company_name, company_status, company_type, registered_postcode, sic_codes_json, match_confidence, ltd_hint_from_site, matched_at)
-    VALUES (?,?,?,?,?,?,?,?,?,?) ON CONFLICT(lead_id) DO UPDATE SET company_number=excluded.company_number, company_name=excluded.company_name,
+  d().prepare(`INSERT INTO companies_house (lead_id, company_number, company_name, company_status, company_type, registered_postcode, sic_codes_json, match_confidence, ltd_hint_from_site, matched_at, date_of_creation)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(lead_id) DO UPDATE SET company_number=excluded.company_number, company_name=excluded.company_name,
     company_status=excluded.company_status, company_type=excluded.company_type, registered_postcode=excluded.registered_postcode,
-    sic_codes_json=excluded.sic_codes_json, match_confidence=excluded.match_confidence, ltd_hint_from_site=excluded.ltd_hint_from_site, matched_at=excluded.matched_at`)
-    .run(r.lead_id, r.company_number, r.company_name, r.company_status, r.company_type, r.registered_postcode, r.sic_codes_json, r.match_confidence, r.ltd_hint_from_site, r.matched_at);
+    sic_codes_json=excluded.sic_codes_json, match_confidence=excluded.match_confidence, ltd_hint_from_site=excluded.ltd_hint_from_site, matched_at=excluded.matched_at,
+    date_of_creation=excluded.date_of_creation`)
+    .run(r.lead_id, r.company_number, r.company_name, r.company_status, r.company_type, r.registered_postcode, r.sic_codes_json, r.match_confidence, r.ltd_hint_from_site, r.matched_at, r.date_of_creation ?? null);
 }
 
-export function leadsNeedingCompaniesHouse(opts: { query?: string; slug?: string; force?: boolean }): LeadRow[] {
+export function leadsNeedingCompaniesHouse(opts: { query?: string; slug?: string; force?: boolean; medium?: boolean }): LeadRow[] {
   const where: string[] = [];
   const params: unknown[] = [];
   if (opts.slug) { where.push('l.slug = ?'); params.push(opts.slug); }
   if (opts.query) { where.push('l.source_query = ?'); params.push(opts.query); }
-  if (!opts.force) where.push('c.lead_id IS NULL');
+  // --medium: look again at medium matches (name agrees, postcode doesn't) now that SIC codes can settle them.
+  if (opts.medium) where.push("c.match_confidence = 'medium'");
+  else if (!opts.force) where.push('c.lead_id IS NULL');
   const sql = `SELECT l.* FROM leads l LEFT JOIN companies_house c ON c.lead_id = l.id ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY l.id`;
   return d().prepare(sql).all(...(params as never[])) as unknown as LeadRow[];
 }
@@ -149,6 +172,7 @@ export function getFullLead(slug: string): FullLead | undefined {
     ch: getCompaniesHouse(lead.id) ?? null,
     score: (d().prepare('SELECT * FROM scores WHERE lead_id = ?').get(lead.id) as ScoreRow | undefined) ?? null,
     pipeline: d().prepare('SELECT * FROM pipeline WHERE lead_id = ?').get(lead.id) as unknown as PipelineRow,
+    velocity: reviewVelocity(lead.id),
   };
 }
 

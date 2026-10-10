@@ -75,6 +75,9 @@ export function buildBrand(i: GatherInputs): Brand {
   if (audit?.free_tier_host) drop.push('free-tier host');
   if (audit?.lh_perf !== null && audit?.lh_perf !== undefined && audit.lh_perf < 50) drop.push(`slow on mobile (Lighthouse ${audit.lh_perf})`);
   if (audit?.https_ok === 0) drop.push('no HTTPS');
+  // Rebuilt from the last archived copy of a dead site: say so, with the date, so the designer treats it as a little stale.
+  const archived = audit?.website_status !== 'live' && !!audit?.wayback_url && pages.length > 0;
+  if (archived) keep.push(`rebuilt from the archived copy of their old site${audit?.wayback_at ? ` (${new Date(audit.wayback_at).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })})` : ''}: ${audit?.wayback_url}. Prices and staff may have changed since`);
   const upsells: string[] = [];
   if (i.logo.quality === 'raster_low' || i.logo.quality === 'none') upsells.push('Redraw the logo as a clean vector');
   if (i.photos.length < 3) upsells.push('Replace stock images with your own photos');
@@ -90,7 +93,7 @@ export function buildBrand(i: GatherInputs): Brand {
     photos: i.photos,
     social: socialOf(pages.flatMap((p) => p.socialLinks)),
     tone_hints: toneHints(reviews),
-    existing_site: { url: audit?.final_url ?? full.lead.website_url ?? null, status: audit?.website_status ?? 'unaudited', keep, drop },
+    existing_site: { url: audit?.final_url ?? full.lead.website_url ?? null, status: archived ? 'archived' : audit?.website_status ?? 'unaudited', keep, drop },
     quality: { logo: i.logo.quality, photo_count: i.photos.length, colour_confidence: palette.confidence, upsells },
   });
 }
@@ -217,10 +220,12 @@ export async function gather(full: FullLead, opts: GatherOpts = {}): Promise<Gat
     notes.push('no GOOGLE_PLACES_API_KEY, skipped Place Details');
   }
 
-  // 2. Their site.
+  // 2. Their site, or the last archived copy of it when the site is dead (src/audit/rescue.ts).
   let pages: PageData[] = [];
-  const siteUrl = full.audit?.website_status === 'live' ? full.audit.final_url : null;
+  const live = full.audit?.website_status === 'live';
+  const siteUrl = live ? full.audit!.final_url : full.audit?.wayback_url ?? null;
   if (siteUrl) {
+    if (!live) log(`gather: the site is ${full.audit?.website_status}; crawling the archived copy from ${full.audit?.wayback_at?.slice(0, 10) ?? 'the Wayback Machine'}`);
     pages = await crawlSite(siteUrl, { log });
     pages.forEach((p, i) => writeFileSync(join(dir, 'pages', `${i}.json`), JSON.stringify({ ...p, html: undefined }, null, 2)));
     pages.forEach((p, i) => writeFileSync(join(dir, 'pages', `${i}.html`), p.html));

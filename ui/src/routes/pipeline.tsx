@@ -3,12 +3,12 @@ import { useQueryClient } from '@tanstack/react-query';
 import { X } from 'lucide-react';
 import { useCallback, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router';
-import type { Board, BoardCard, BoardColumn } from '../../../src/ui/api-types';
-import { api, useBoard, useMeta, useMoveCard } from '../api';
+import type { Board, BoardCard, BoardColumn, OutreachStats, StatRow } from '../../../src/ui/api-types';
+import { api, useBoard, useMeta, useMoveCard, useOutreachStats } from '../api';
 import { useAgentGuard } from '../components/agent-guard';
 import { Button } from '../components/ui/button';
 import { Confirm } from '../components/ui/dialog';
-import { Page } from '../components/ui/section';
+import { Page, Section } from '../components/ui/section';
 import { Segmented } from '../components/ui/segmented';
 import { Skeleton } from '../components/ui/skeleton';
 import { ErrorState } from '../components/ui/states';
@@ -32,6 +32,42 @@ export function filterBoard(board: Board, f: { q: string; category: string; tier
   return { ...board, columns: Object.fromEntries(COLUMNS.map((k) => [k, (board.columns[k] ?? []).filter(keep)])) as Board['columns'] };
 }
 
+/** Outcomes by trade, channel and hook: the table the picker should eventually learn from. Pure for the rows. */
+function StatTable({ title, rows }: { title: string; rows: StatRow[] }) {
+  if (!rows.length) return null;
+  const pct = (n: number, of: number) => (of ? `${Math.round((100 * n) / of)}%` : '');
+  return (
+    <table className="w-full text-sm" aria-label={title}>
+      <thead><tr className="text-left text-xs text-fg-3"><th className="px-5 py-2 font-normal">{title}</th><th className="px-2 py-2 text-right font-normal">Pitched</th><th className="px-2 py-2 text-right font-normal">Opened</th><th className="px-2 py-2 text-right font-normal">Replied</th><th className="px-5 py-2 text-right font-normal">Won</th></tr></thead>
+      <tbody className="divide-y divide-border-soft">
+        {rows.map((r) => (
+          <tr key={r.key}>
+            <td className="px-5 py-2 text-fg">{r.label}</td>
+            <td className="num px-2 py-2 text-right text-fg-2">{r.pitched}</td>
+            <td className="num px-2 py-2 text-right text-fg-2">{r.opened}<span className="ml-1 text-xs text-fg-3">{pct(r.opened, r.pitched)}</span></td>
+            <td className="num px-2 py-2 text-right text-fg-2">{r.replied}<span className="ml-1 text-xs text-fg-3">{pct(r.replied, r.pitched)}</span></td>
+            <td className="num px-5 py-2 text-right text-fg-2">{r.won}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+export function WhatsWorking({ s }: { s: OutreachStats }) {
+  const o = s.overall;
+  if (!o.pitched) return null;
+  return (
+    <Section className="mt-4" title="What's working" actions={<span className="text-xs text-fg-3">{o.pitched} pitched · {o.opened} opened · {o.replied} replied · {o.won} won</span>}>
+      {!s.opensTracked ? <p className="px-5 pt-3 text-xs text-fg-3">Preview opens aren't counted: add UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN to .env</p> : null}
+      <div className="grid gap-x-6 py-2 lg:grid-cols-3">
+        <StatTable title="By trade" rows={s.byTrade} />
+        <StatTable title="By channel" rows={s.byChannel} />
+        <StatTable title="By hook" rows={s.byHook} />
+      </div>
+    </Section>
+  );
+}
+
 /** Move a card between columns in cached board data, for the optimistic update. */
 function moveInBoard(board: Board, slug: string, from: BoardColumn, to: BoardColumn): Board {
   const card = board.columns[from].find((c) => c.slug === slug);
@@ -42,6 +78,7 @@ function moveInBoard(board: Board, slug: string, from: BoardColumn, to: BoardCol
 export function PipelinePage() {
   const board = useBoard();
   const meta = useMeta();
+  const stats = useOutreachStats();
   const move = useMoveCard();
   const guard = useAgentGuard();
   const toast = useToast();
@@ -158,6 +195,8 @@ export function PipelinePage() {
           <DragOverlay dropAnimation={null}>{active ? <div className="w-[256px]"><BoardCardView card={active.card} column={active.column} onMove={onMove} overlay /></div> : null}</DragOverlay>
         </DndContext>
       )}
+
+      {stats.data ? <WhatsWorking s={stats.data} /> : null}
 
       <Confirm open={!!closing} onClose={() => setClosing(null)} confirmLabel="Close" busy={move.isPending}
         title={closing ? `Close ${closing.card.name}?` : ''}

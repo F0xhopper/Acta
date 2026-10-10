@@ -3,7 +3,7 @@ import { auditLead, mergeChecks } from '../src/audit/index.js';
 import type { FetchResult } from '../src/audit/fetch.js';
 import type { RenderResult } from '../src/audit/screenshot.js';
 import { expandAreas } from '../src/discover/areas.js';
-import type { LeadRow } from '../src/db/types.js';
+import type { AuditRow, LeadRow } from '../src/db/types.js';
 
 const lead = (url: string): LeadRow => ({
   id: 1, slug: 't', place_id: 'p', name: 'Acme', category_key: 'plumber', category_raw: 'plumbers', area: 'X', source_query: 'q', address: null, postcode: null,
@@ -24,6 +24,7 @@ const deps = (f: (url: string) => FetchResult, r: RenderResult) => ({
   fetchHomepage: async (url: string) => f(url),
   runPsi: async () => ({ perf: null, seo: null, a11y: null, bp: null, jsonPath: null, error: null }),
   renderSite: async () => r,
+  rescue: async (_lead: LeadRow, audit: AuditRow) => { audit.domain_status = 'unknown'; return audit; },   // no RDAP or Wayback calls in tests
 });
 const opts = { psi: false };
 

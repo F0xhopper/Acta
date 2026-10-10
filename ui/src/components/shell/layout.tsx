@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router';
 import { useJobs, useMeta, useSummary, useUsage } from '../../api';
 import { cn } from '../../lib/cn';
+import { AutopilotPill } from '../autopilot';
 import { UsagePill } from './usage';
 import { Dot } from '../ui/chip';
 
@@ -30,7 +31,7 @@ function Mark() {
   );
 }
 
-/** The window: a top bar with the mark, the pill navigation and the usage meter, then the page. */
+/** The window: a top bar with the mark, the pill navigation, the autopilot switch and the usage meter, then the page. */
 export function Layout() {
   const usage = useUsage();
   const jobs = useJobs(30);
@@ -67,6 +68,7 @@ export function Layout() {
             title="Every job the pipeline has run, with logs">
             {running ? <><Dot tone="live" /><span>{running} running</span></> : <span>Activity</span>}
           </NavLink>
+          <AutopilotPill />
           <UsagePill usage={usage.data} />
         </div>
       </header>

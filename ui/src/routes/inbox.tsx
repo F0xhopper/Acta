@@ -4,6 +4,7 @@ import type { BoardColumn, BusinessTab, InboxItem, InboxKind, Summary } from '..
 import { bizPath } from '../lib/links';
 import { useStartBuild, useSummary } from '../api';
 import { useAgentGuard } from '../components/agent-guard';
+import { AutopilotCounts, AutopilotSwitch, autopilotTone, useAutopilotSwitch } from '../components/autopilot';
 import { Button, ButtonLink } from '../components/ui/button';
 import { Dot, type DotTone } from '../components/ui/chip';
 import { Empty } from '../components/ui/empty';
@@ -15,9 +16,10 @@ import { cn } from '../lib/cn';
 import { COLUMN_LABEL, duration, plural, timeAgo } from '../lib/format';
 
 /** Kinds in the order they unblock the most. */
-export const KIND_ORDER: InboxKind[] = ['failed', 'photos', 'concept', 'review', 'send', 'followup', 'reply'];
+export const KIND_ORDER: InboxKind[] = ['failed', 'call', 'photos', 'concept', 'review', 'send', 'followup', 'reply'];
 const KIND: Record<InboxKind, { label: string; action: string; tone: DotTone }> = {
   failed: { label: 'Build failed', action: 'Retry', tone: 'bad' },
+  call: { label: 'Call first', action: 'See the script', tone: 'warn' },
   photos: { label: 'Needs photos', action: 'Sort photos', tone: 'warn' },
   concept: { label: 'Needs a concept', action: 'Choose a concept', tone: 'warn' },
   review: { label: 'To review', action: 'Review site', tone: 'warn' },
@@ -42,6 +44,22 @@ function Strip({ s }: { s: Summary }) {
         </span>
       ))}
     </Link>
+  );
+}
+
+/** The autopilot: whether the pipeline is running itself, what it is doing or waiting for, and the switch. The header pill has the same switch on every page. */
+function AutopilotPanel() {
+  const { a, toggle, pending } = useAutopilotSwitch();
+  if (!a) return null;
+  return (
+    <Section className="mb-4" bodyClassName="px-5 py-3"
+      title={<h2 className="flex items-center gap-2 text-sm font-medium"><Dot tone={autopilotTone(a)} />Autopilot {a.on ? 'on' : 'off'}</h2>}
+      actions={<AutopilotSwitch a={a} toggle={toggle} pending={pending} />}>
+      <p className="text-sm text-fg-2">{a.reason}</p>
+      <AutopilotCounts a={a} className="mt-1" />
+      {a.on && !a.scheduled ? <p className="mt-1 text-xs leading-6 text-fg-3">Runs while this server is open. To keep it running whenever the Mac is on: <code className="rounded bg-white/5 px-1 text-fg-2">pnpm pipeline schedule install</code>.</p> : null}
+      {a.on && !a.notifyPush ? <p className="mt-1 text-xs leading-6 text-fg-3">You get a macOS notification when a site is ready or a build fails. Add <code className="rounded bg-white/5 px-1 text-fg-2">ACTA_NOTIFY_URL</code> to .env for a push to your phone as well.</p> : null}
+    </Section>
   );
 }
 
@@ -77,6 +95,7 @@ export function InboxPage() {
   return (
     <Page title="Inbox" subtitle={items.length ? `${plural(items.length, 'thing')} need${items.length === 1 ? 's' : ''} you` : 'Nothing needs you right now'} className="max-w-[920px]">
       <Strip s={s} />
+      <AutopilotPanel />
       <div className="flex flex-col gap-4">
         <Section title={<h2 className="text-sm font-medium">Needs you {items.length ? <span className="text-fg-3">({items.length})</span> : null}</h2>}>
           {items.length ? <ul className="divide-y divide-border-soft">{items.map((i) => <NeedsRow key={`${i.kind}-${i.slug}`} item={i} />)}</ul> : (

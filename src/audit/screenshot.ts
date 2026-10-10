@@ -87,3 +87,19 @@ export function renderLooksReal(r: RenderResult | null): boolean {
   if (BLOCKED.test(`${r.title ?? ''} ${r.text.slice(0, 400)}`)) return false;
   return r.text.length >= 200;
 }
+
+/** The page as a real browser built it, without screenshots: for sites whose content arrives by JavaScript. */
+export async function renderHtml(url: string, timeoutMs = 20000): Promise<{ html: string | null; finalUrl: string | null }> {
+  const b = await getBrowser();
+  const ctx = await b.newContext({ ignoreHTTPSErrors: true, locale: 'en-GB' });
+  try {
+    const page = await ctx.newPage();
+    const resp = await load(page, url, timeoutMs);
+    await page.waitForTimeout(1200);
+    return { html: await page.content(), finalUrl: resp?.url() ?? page.url() };
+  } catch {
+    return { html: null, finalUrl: null };
+  } finally {
+    await ctx.close();
+  }
+}

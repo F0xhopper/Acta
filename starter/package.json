@@ -12,7 +12,9 @@
     "gate": "tsx scripts/gate.ts",
     "gate:fast": "tsx scripts/gate.ts --skip-lighthouse",
     "shots": "tsx scripts/shots.ts",
-    "e2e": "playwright test"
+    "mockups": "tsx scripts/mockups.ts",
+    "e2e": "playwright test",
+    "refs": "tsx scripts/refs.ts"
   },
   "dependencies": {
     "next": "16.3.8",

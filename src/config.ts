@@ -18,11 +18,14 @@ const CategorySchema = z.object({
   key: z.string(),
   keywords: z.array(z.string()).min(1),
   pays_for_marketing: z.boolean().default(false),
+  trade_value: z.number().min(0).max(100).default(50),
   walk_in: z.boolean().default(false),
   dm: z.boolean().default(false),
   sic: z.array(z.string()).default([]),
   must_haves: z.array(z.string()).default([]),
   search_terms: z.array(z.string()).default([]),
+  query: z.string().optional(),   // what the sweep searches for, e.g. "barbers"
+  areas: z.string().optional(),   // the area group from config/areas.yaml that suits it
 });
 export type Category = z.infer<typeof CategorySchema>;
 
@@ -34,6 +37,7 @@ const ScoringSchema = z.object({
     tier_min_viability: z.number(),
     tier_a_min_reviews: z.number().default(10),
     adequate_site_opportunity: z.number(),
+    weak_site_perf_under: z.number().default(40),   // a live site this slow counts as weak, whatever else it scores
     audit_fresh_days: z.number(),
     cache_days: z.number(),
   }),
@@ -72,8 +76,9 @@ const ScoringSchema = z.object({
     recent_reviews: z.number().default(10),
     stale_review_months: z.number().default(24),
     stale_reviews: z.number().default(-15),
+    recency_trusted_under: z.number().default(30),  // review dates only count for businesses with fewer reviews than this
   }),
-  total: z.object({ opportunity_weight: z.number(), viability_weight: z.number() }),
+  total: z.object({ opportunity_weight: z.number(), viability_weight: z.number(), content_weight: z.number().default(0) }),
   hosts: z.object({
     social: z.array(z.string()),
     directory: z.array(z.string()),
@@ -108,6 +113,11 @@ export function loadScoring(): Scoring {
   }
   return scoringCache;
 }
+
+/** The search words for a category: its `query`, or its first plural keyword. */
+export const categoryQuery = (c: Category) => c.query ?? c.keywords.find((k) => k.endsWith('s')) ?? c.keywords[0];
+/** The area group a category is searched across: its `areas`, else high streets for walk-in trades and suburbs for the rest. */
+export const categoryAreas = (c: Category) => c.areas ?? (c.walk_in ? 'high_streets' : 'trades');
 
 export function findCategory(key: string): Category | undefined {
   return loadCategories().find((c) => c.key === key);

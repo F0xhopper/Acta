@@ -25,13 +25,17 @@ export function jobArgs(kind: JobKind, target: string | null, opts: { force?: bo
     case 'deploy': return ['build', target!, '--from', 'deploy'];
     case 'teardown': return ['teardown', target!, '--yes'];
     case 'search': return ['run', target!];
+    case 'leads': return ['leads', '--once'];
     case 'gather': return ['gather', target!];
     case 'shots': return ['shots', target!];
+    case 'email': return ['web-emails', target!];
+    case 'day': return ['day'];
+    case 'week': return ['week'];
   }
 }
 
 export const LANE: Record<JobKind, 'agent' | 'search' | 'quick'> = {
-  build: 'agent', revise: 'agent', concepts: 'agent', deploy: 'agent', search: 'search', gather: 'quick', teardown: 'quick', shots: 'quick',
+  build: 'agent', revise: 'agent', concepts: 'agent', deploy: 'agent', search: 'search', leads: 'search', week: 'search', gather: 'quick', teardown: 'quick', shots: 'quick', email: 'quick', day: 'quick',
 };
 
 /** Which queued jobs may start now, given what is running. One agent job and one search at a time; quick jobs always. */
@@ -118,6 +122,10 @@ function start(id: number) {
   const child = spawn('pnpm', ['-s', 'pipeline', ...args], { cwd: ROOT, detached: true, stdio: ['ignore', fd, fd], env: process.env });
   closeSync(fd);
   d().prepare("UPDATE jobs SET status = 'running', pid = ?, started_at = ? WHERE id = ?").run(child.pid ?? null, isoNow(), id);
+  // A build takes an hour or more: keep the Mac from idle-sleeping while it runs (the lid still sleeps it).
+  if (process.platform === 'darwin' && LANE[r.kind] === 'agent' && child.pid) {
+    try { spawn('caffeinate', ['-i', '-w', String(child.pid)], { detached: true, stdio: 'ignore' }).unref(); } catch { /* best effort */ }
+  }
   child.on('exit', (code, signal) => {
     const cur = jobRow(id);
     if (cur?.status === 'cancelled') return;

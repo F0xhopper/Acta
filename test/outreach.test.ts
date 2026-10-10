@@ -65,3 +65,12 @@ describe('reading replies', () => {
     expect(classifyReply('Re: x', text)).toBe('reply');
   });
 });
+
+import { emailText } from '../src/delivery/index.js';
+describe('pitch email wording', () => {
+  it('reads cleanly when the hook already has a clause in it', () => {
+    const { body } = emailText({ businessName: "Oslo's Barbers Ltd", hook: 'the website on your Google listing no longer exists, so anyone who taps it gets nothing', previewUrl: 'https://x', rating: 4.9, reviews: 602, price: { build: 395, monthly: 25 }, upsells: [], sender: { name: 'Eden Phillips', trading_name: 'Acta Studio', phone: '07946 629657', email: 'hello@actastudio.co.uk', website: 'actastudio.co.uk', postal_address: '17 Upper St Marys Road, Birmingham', area: 'Birmingham' } });
+    expect(body).toContain("gets nothing. I've built Oslo's Barbers a new one");
+    expect(body).not.toMatch(/gets nothing, so I built/);
+  });
+});

@@ -7,13 +7,14 @@ export interface MessageRow {
   id: number; lead_id: number; slug: string; direction: 'out' | 'in'; kind: string; channel: string;
   to_addr: string | null; from_addr: string | null; subject: string | null; body: string | null;
   transport: string; status: string; message_id: string | null; in_reply_to: string | null; provider_id: string | null; error: string | null; at: string;
+  hook?: string | null;   // what the pitch led with (src/outreach/hook.ts), for reading outcomes by hook
 }
 const d = () => openDb();
 
 export function recordMessage(m: Omit<MessageRow, 'id' | 'at'> & { at?: string }): MessageRow {
   const at = m.at ?? isoNow();
-  const r = d().prepare(`INSERT INTO outreach_messages (lead_id, slug, direction, kind, channel, to_addr, from_addr, subject, body, transport, status, message_id, in_reply_to, provider_id, error, at)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(m.lead_id, m.slug, m.direction, m.kind, m.channel, m.to_addr, m.from_addr, m.subject, m.body, m.transport, m.status, m.message_id, m.in_reply_to, m.provider_id, m.error, at);
+  const r = d().prepare(`INSERT INTO outreach_messages (lead_id, slug, direction, kind, channel, to_addr, from_addr, subject, body, transport, status, message_id, in_reply_to, provider_id, error, at, hook)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(m.lead_id, m.slug, m.direction, m.kind, m.channel, m.to_addr, m.from_addr, m.subject, m.body, m.transport, m.status, m.message_id, m.in_reply_to, m.provider_id, m.error, at, m.hook ?? null);
   return d().prepare('SELECT * FROM outreach_messages WHERE id = ?').get(Number(r.lastInsertRowid)) as unknown as MessageRow;
 }
 export const messagesFor = (leadId: number) => d().prepare('SELECT * FROM outreach_messages WHERE lead_id = ? ORDER BY at DESC, id DESC').all(leadId) as unknown as MessageRow[];

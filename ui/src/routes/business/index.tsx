@@ -26,6 +26,7 @@ const TAB_LABEL: Record<Tab, string> = { overview: 'Overview', build: 'Build', r
 /** Which tab is waiting on you, if any: it gets a dot. */
 function waitingTab(b: BuildDetail | undefined): Tab | null {
   if (!b) return null;
+  if (b.state === 'awaiting_call') return 'overview';
   if (b.state === 'awaiting_photos' || b.state === 'awaiting_concept' || b.state === 'failed') return 'build';
   if (b.state === 'preview_ready') return 'review';
   if (b.state === 'approved' && !b.delivery?.sentAt) return 'send';

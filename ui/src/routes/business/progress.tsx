@@ -1,4 +1,4 @@
-import { Check, Circle, Hammer, Images, Lightbulb } from 'lucide-react';
+import { Check, Circle, Hammer, Images, Lightbulb, PhoneCall } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import type { BuildDetail } from '../../../../src/ui/api-types';
 import { useCancelJob, useJob, useStartBuild, useUsage } from '../../api';
@@ -63,6 +63,11 @@ function BuildProgress({ build }: { build: BuildDetail }) {
     <div className="flex flex-col gap-4">
       <Section bodyClassName="px-4 py-5"><ProgressRail rail={build.rail} /></Section>
 
+      {build.state === 'awaiting_call' ? (
+        <Notice tone="warn" title="Nothing is built until you've called them" action={<ButtonLink to={bizPath(slug, 'overview')} variant="primary" size="sm"><PhoneCall className="size-3.5" aria-hidden />See the script</ButtonLink>}>
+          They can't be cold emailed, so the first contact is a call either way. Thirty seconds now turns this into a site they asked to see.
+        </Notice>
+      ) : null}
       {build.state === 'awaiting_photos' ? (
         <Notice tone="warn" title="The build is waiting for you to sort the photos" action={<ButtonLink to={bizPath(slug, 'photos')} variant="primary" size="sm"><Images className="size-3.5" aria-hidden />Sort photos</ButtonLink>}>
           Keep, drop or choose the hero, then the build carries on with research.
@@ -73,6 +78,7 @@ function BuildProgress({ build }: { build: BuildDetail }) {
           Three design directions are ready. The agent builds the one you pick.
         </Notice>
       ) : null}
+      {build.state === 'awaiting_usage' && build.activeJobId === null ? <UsagePausedNotice build={build} /> : null}
       {stuck ? <StuckNotice build={build} current={current} /> : null}
       {build.state === 'failed' ? <FailedPanel build={build} /> : null}
 
@@ -90,8 +96,8 @@ function BuildProgress({ build }: { build: BuildDetail }) {
 
 /** What the Now card says once nothing is running. */
 const DONE_HEADLINE: Partial<Record<BuildDetail['state'], string>> = {
-  preview_ready: 'Finished. Ready for your review.', approved: 'Approved and ready to send.', awaiting_photos: 'Waiting for you to sort the photos.',
-  awaiting_concept: 'Waiting for you to choose a concept.', picked: 'Queued. It starts when the build begins.', torn_down: 'Taken down.', live: 'Live.',
+  preview_ready: 'Finished. Ready for your review.', approved: 'Approved and ready to send.', awaiting_photos: 'Waiting for you to sort the photos.', awaiting_call: 'Waiting for your call before the build.',
+  awaiting_concept: 'Waiting for you to choose a concept.', awaiting_usage: 'Paused at the Claude usage limit.', picked: 'Queued. It starts when the build begins.', torn_down: 'Taken down.', live: 'Live.',
 };
 
 function NowPanel({ build, running, current, now }: { build: BuildDetail; running: boolean; current: string | null; now: number }) {
@@ -181,6 +187,21 @@ function StuckNotice({ build, current }: { build: BuildDetail; current: string |
   return (
     <Notice tone="warn" title="Nothing new for ten minutes" action={<CancelButton build={build} current={current} />}>
       The agent may be thinking through a long step, or it may be stuck. Check the log below before cancelling.
+    </Notice>
+  );
+}
+
+/** Paused at the usage limit: nothing for you to do, it carries on by itself. "Continue now" goes past the limit. */
+function UsagePausedNotice({ build }: { build: BuildDetail }) {
+  const { slug, lead } = useBusiness();
+  const guard = useAgentGuard();
+  const start = useStartBuild();
+  const toast = useToast();
+  const go = () => guard(`Continue ${lead.name}`, (override) => start.mutateAsync({ slug, override })).then((j) => { if (j) toast({ kind: 'ok', text: `Continue ${lead.name}: queued` }); });
+  return (
+    <Notice tone="info" title={`Paused at the Claude usage limit${build.failedStep ? `, in ${build.failedStep}` : ''}`}
+      action={<Button size="sm" variant="outline" loading={start.isPending} onClick={() => void go()}>Continue now</Button>}>
+      The agent's conversation is saved. Once usage is back under the limit it carries on where it stopped, without redoing anything. The UI checks every five minutes.
     </Notice>
   );
 }

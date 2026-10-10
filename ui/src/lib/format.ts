@@ -48,19 +48,19 @@ export const STATUS_TONE: Record<PipelineStatus, DotTone> = {
   new: 'muted', shortlisted: 'info', building: 'live', preview_ready: 'warn', contacted: 'info', followup_1: 'info', followup_2: 'info', replied: 'warn', won: 'ok', lost: 'muted', do_not_contact: 'muted',
 };
 export const BUILD_LABEL: Record<BuildState, string> = {
-  picked: 'Queued', gathered: 'Building', repo_ready: 'Building', awaiting_photos: 'Needs photos', researched: 'Building', awaiting_concept: 'Needs a concept',
-  built: 'Checking', gated: 'Deploying', pushed: 'Deploying', deployed: 'Deploying', preview_ready: 'To review', approved: 'Ready to send', revising: 'Making changes', failed: 'Build failed', torn_down: 'Taken down', live: 'Live',
+  picked: 'Queued', awaiting_call: 'Call them first', gathered: 'Building', repo_ready: 'Building', awaiting_photos: 'Needs photos', researched: 'Building', awaiting_concept: 'Needs a concept',
+  built: 'Checking', gated: 'Deploying', pushed: 'Deploying', deployed: 'Deploying', preview_ready: 'To review', approved: 'Ready to send', revising: 'Making changes', failed: 'Build failed', awaiting_usage: 'Paused, usage', torn_down: 'Taken down', live: 'Live',
 };
 export function buildTone(s: BuildState | null | undefined, active = false): DotTone {
   if (!s) return 'muted';
   if (s === 'failed') return 'bad';
-  if (s === 'awaiting_photos' || s === 'awaiting_concept' || s === 'preview_ready') return 'warn';
+  if (s === 'awaiting_call' || s === 'awaiting_photos' || s === 'awaiting_concept' || s === 'preview_ready') return 'warn';
   if (s === 'approved' || s === 'live') return 'ok';
-  if (s === 'torn_down') return 'muted';
+  if (s === 'torn_down' || s === 'awaiting_usage') return active ? 'live' : 'muted';
   return active ? 'live' : 'info';
 }
 export const COLUMN_LABEL: Record<BoardColumn, string> = { picked: 'Picked', building: 'Building', preview: 'To review', ready: 'Ready to send', sent: 'Sent', replied: 'Replied', won: 'Won', closed: 'Closed' };
-export const JOB_LABEL: Record<JobKind, string> = { build: 'Build', revise: 'Revise', search: 'Search', deploy: 'Deploy', gather: 'Gather', teardown: 'Tear down', shots: 'Screenshots', concepts: 'Concepts' };
+export const JOB_LABEL: Record<JobKind, string> = { build: 'Build', revise: 'Revise', search: 'Search', leads: 'Find leads', deploy: 'Deploy', gather: 'Gather', teardown: 'Tear down', shots: 'Screenshots', concepts: 'Concepts', email: 'Find email', day: 'Housekeeping', week: 'Weekly re-score' };
 export const JOB_TONE: Record<JobStatus, DotTone> = { queued: 'muted', running: 'live', done: 'ok', failed: 'bad', cancelled: 'muted' };
 export const JOB_STATUS_LABEL: Record<JobStatus, string> = { queued: 'Queued', running: 'Running', done: 'Done', failed: 'Failed', cancelled: 'Cancelled' };
 export const AGENT_KINDS: JobKind[] = ['build', 'revise', 'concepts'];
@@ -85,6 +85,7 @@ export function stageOf(status: PipelineStatus, build: BuildState | null | undef
   if (build === 'failed') return { label: 'Build failed', tone: 'bad' };
   if (build === 'awaiting_photos') return { label: 'Needs photos', tone: 'warn' };
   if (build === 'awaiting_concept') return { label: 'Needs a concept', tone: 'warn' };
+  if (build === 'awaiting_usage') return { label: 'Paused, usage', tone: active ? 'live' : 'muted' };
   if (build === 'revising') return { label: 'Making changes', tone: active ? 'live' : 'info' };
   if (build === 'approved') return { label: 'Ready to send', tone: 'warn' };
   if (build === 'preview_ready' || status === 'preview_ready') return { label: 'To review', tone: 'warn' };

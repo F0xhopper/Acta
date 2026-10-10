@@ -13,6 +13,7 @@ import { checkDomain, type DnsCheck } from './dns.js';
 import { contactsFor, dailyCap, domainOf, emailBlockers, followUpStatus, followUpText, localDay, nextTouch, warmupWeek } from './rules.js';
 import { deleteMessage, emailsOn, firstEmailDay, getState, lastOut, messagesFor, recordMessage, setNextTouch, type MessageRow } from './store.js';
 import { deliver } from './transport.js';
+import { hookKind } from './hook.js';
 
 export class OutreachError extends Error { constructor(message: string, public code: 'blocked' | 'cap' | 'config' | 'failed' | 'state' = 'blocked') { super(message); } }
 
@@ -110,6 +111,7 @@ export function logContact(slug: string, o: { kind: 'pitch' | 'followup_1' | 'fo
   const m = recordMessage({
     lead_id: full.lead.id, slug, direction: 'out', kind: o.kind, channel: o.channel, to_addr: o.to ?? null, from_addr: cfg.fromAddress || null,
     subject: o.subject ?? null, body: o.body ?? null, transport: 'manual', status: 'logged', message_id: null, in_reply_to: null, provider_id: null, error: null,
+    hook: hookKind(full.audit),
   });
   afterContact(full, o.kind, o.channel, cfg);
   return m;
@@ -153,6 +155,7 @@ async function sendEmail(full: FullLead, kind: 'pitch' | 'followup_1' | 'followu
   const m = recordMessage({
     lead_id: full.lead.id, slug: full.lead.slug, direction: 'out', kind, channel: 'email', to_addr: to, from_addr: cfg.fromAddress, subject, body,
     transport: cfg.transport, status: r.status, message_id: r.messageId, in_reply_to: opts.inReplyTo ?? null, provider_id: r.providerId, error: r.error,
+    hook: hookKind(full.audit),
   });
   if (r.status === 'failed') throw new OutreachError(`The email didn't send: ${r.error}`, 'failed');
   afterContact(full, kind, 'email', cfg);

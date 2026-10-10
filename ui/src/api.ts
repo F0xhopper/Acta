@@ -1,8 +1,8 @@
 /** Typed client for the Acta UI server. One fetch helper, one react-query hook per endpoint. */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
-  Board, BoardColumn, BuildDetail, ConceptSet, Delivery, Device, FeedbackItem, Job, LeadDetail, LeadOutreach, LeadSummary, Meta, NewFeedback, Ok, OutreachMessage, OutreachStatus,
-  PhotoChoice, PhotoSet, PipelineStatus, Round, Summary, Usage,
+  Autopilot, Board, BoardColumn, BuildDetail, ConceptSet, Delivery, Device, FeedbackItem, Finding, Job, LeadDetail, LeadOutreach, LeadSummary, Reach, Meta, NewFeedback, Ok, OutreachMessage, OutreachStats, OutreachStatus,
+  PhotoChoice, PhotoSet, PipelineStatus, Round, Suggestion, Summary, Usage,
 } from '../../src/ui/api-types';
 
 export class ApiError extends Error {
@@ -36,13 +36,16 @@ export const api = {
 };
 
 const enc = encodeURIComponent;
-export interface LeadFilters { tier?: string[]; category?: string; status?: string; area?: string; q?: string }
+export interface LeadFilters { tier?: string[]; category?: string; status?: string; area?: string; reach?: string; email?: string; verdict?: string; q?: string }
 const leadsQs = (f: LeadFilters) => {
   const p = new URLSearchParams();
   if (f.tier?.length) p.set('tier', f.tier.join(','));
   if (f.category) p.set('category', f.category);
   if (f.status) p.set('status', f.status);
   if (f.area) p.set('area', f.area);
+  if (f.reach) p.set('reach', f.reach);
+  if (f.email) p.set('email', f.email);
+  if (f.verdict) p.set('verdict', f.verdict);
   if (f.q) p.set('q', f.q);
   const s = p.toString();
   return s ? `?${s}` : '';
@@ -75,7 +78,11 @@ export const useDelivery = (slug: string | undefined, enabled = true) =>
     queryFn: async () => { try { return await api.get<Delivery>(`/api/deliveries/${enc(slug!)}`); } catch (e) { if (e instanceof ApiError && e.status === 404) return null; throw e; } },
   });
 
+export const useSuggestions = () => useQuery<Suggestion[], ApiError>({ queryKey: ['suggestions'], queryFn: () => api.get('/api/suggestions'), refetchInterval: SLOW * 2 });
+export const useFinding = () => useQuery<Finding, ApiError>({ queryKey: ['finding'], queryFn: () => api.get('/api/discovery'), refetchInterval: SLOW * 4 });
+export const useAutopilot = () => useQuery<Autopilot | null, ApiError>({ queryKey: ['autopilot'], queryFn: () => api.get('/api/autopilot'), refetchInterval: SLOW * 2 });
 export const useOutreach = () => useQuery<OutreachStatus, ApiError>({ queryKey: ['outreach'], queryFn: () => api.get('/api/outreach'), refetchInterval: 60_000 });
+export const useOutreachStats = () => useQuery<OutreachStats, ApiError>({ queryKey: ['outreach-stats'], queryFn: () => api.get('/api/outreach/stats'), refetchInterval: 60_000 });
 export const useLeadOutreach = (slug: string | undefined) => useQuery<LeadOutreach, ApiError>({ queryKey: ['lead-outreach', slug], queryFn: () => api.get(`/api/leads/${enc(slug!)}/outreach`), enabled: !!slug, refetchInterval: SLOW * 2 });
 
 /** Mutations refresh everything they could have touched; the server is local and cheap. */
@@ -88,6 +95,7 @@ export type JobOk = Ok & { job?: Job | null };
 
 export const usePick = () => useAction((v: { slug: string; pick: boolean }) => api.post<Ok>(`/api/leads/${enc(v.slug)}/${v.pick ? 'pick' : 'unpick'}`));
 export const useSetStatus = () => useAction((v: { slug: string; status: PipelineStatus; note?: string }) => api.post<Ok>(`/api/leads/${enc(v.slug)}/status`, { status: v.status, note: v.note }));
+export const useCallOutcome = () => useAction((v: { slug: string; answer: 'yes' | 'no'; note?: string }) => api.post<Ok>(`/api/leads/${enc(v.slug)}/call`, { answer: v.answer, note: v.note }));
 export const useStartBuild = () => useAction((v: { slug: string; force?: boolean; from?: string } & Override) => api.post<Job>(`/api/builds/${enc(v.slug)}/start`, { force: v.force, from: v.from, override: v.override }));
 export const useApprove = () => useAction((slug: string) => api.post<Ok>(`/api/builds/${enc(slug)}/approve`));
 export const useTeardown = () => useAction((slug: string) => api.post<Job>(`/api/builds/${enc(slug)}/teardown`));
@@ -101,6 +109,9 @@ export const useSkipPhotos = () => useAction((v: { slug: string } & Override) =>
 export const useChooseConcept = () => useAction((v: { slug: string; index: number | null; note?: string } & Override) => api.post<JobOk>(`/api/builds/${enc(v.slug)}/concepts/choose`, { index: v.index, note: v.note, override: v.override }));
 export const useRegenerateConcepts = () => useAction((v: { slug: string; note: string } & Override) => api.post<Job>(`/api/builds/${enc(v.slug)}/concepts/regenerate`, { note: v.note, override: v.override }));
 export const useSearch = () => useAction((query: string) => api.post<Job>('/api/search', { query }));
+export const useAutoFind = () => useAction((on: boolean) => api.post<Finding>('/api/discovery/auto', { on }));
+export const useSetAutopilot = () => useAction((on: boolean) => api.post<Autopilot>('/api/autopilot', { on }));
+export const useFindNow = () => useAction(() => api.post<Job>('/api/discovery/run'));
 export const useCancelJob = () => useAction((id: number) => api.post<Job>(`/api/jobs/${id}/cancel`));
 export const useGenerateDelivery = () => useAction((slug: string) => api.post<Delivery>(`/api/deliveries/${enc(slug)}`));
 export const useSaveDelivery = () => useAction((v: { slug: string; patch: Partial<Pick<Delivery, 'subject' | 'body' | 'whatsapp'>> }) => api.put<Delivery>(`/api/deliveries/${enc(v.slug)}`, v.patch));
@@ -114,3 +125,5 @@ export const useSendPitch = () => useAction((v: { slug: string; override?: boole
 export const useFollowUp = () => useAction((v: { slug: string; mode: 'send' | 'logged'; subject?: string; body?: string; channel?: string; override?: boolean }) => api.post<SentOk>(`/api/leads/${enc(v.slug)}/followup`, v));
 export const useCheckReplies = () => useAction(() => api.post<{ checked: number; matched: { slug: string; name: string; kind: string }[]; error: string | null }>('/api/outreach/replies'));
 export const useRecheckDns = () => useAction(() => api.post<OutreachStatus>('/api/outreach/dns'));
+export const useWebEmail = () => useAction((slug: string) => api.post<Job>(`/api/leads/${enc(slug)}/web-email`));
+export const useSetContact = () => useAction((v: { slug: string; email: string | null }) => api.post<Ok & { reach: Reach }>(`/api/leads/${enc(v.slug)}/contact`, { email: v.email }));

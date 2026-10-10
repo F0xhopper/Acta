@@ -5,7 +5,10 @@ import { listBuilds, type BuildRow } from '../build/queries.js';
 import { readDelivery } from '../delivery/index.js';
 import type { Board, BoardCard, BoardColumn, BuildState, Discovery, InboxItem, PipelineStatus, Summary, Tier } from './api-types.js';
 import { activeJobFor, activeJobs, listJobs } from './jobs.js';
-import { categoryLabel, siteDir, toBuildSummary } from './mappers.js';
+import { categoryLabel, siteDir, toBuildSummary, toReach } from './mappers.js';
+import { getFullLead } from '../db/queries.js';
+import { hook } from '../report/format.js';
+import { displayUkPhone } from '../util/phone.js';
 import { fileUrl } from './files.js';
 import { sentRounds } from './feedback.js';
 import { getUsage } from './usage-cache.js';
@@ -33,7 +36,7 @@ export function columnFor(status: PipelineStatus, state: BuildState | null): Boa
   if (state === 'approved') return 'ready';
   if (status === 'preview_ready') return 'preview';
   if (status === 'building') return 'building';
-  if (status === 'shortlisted' && state && !['picked', 'torn_down'].includes(state)) return 'building';
+  if (status === 'shortlisted' && state && !['picked', 'awaiting_call', 'torn_down'].includes(state)) return 'building';
   return 'picked';
 }
 
@@ -55,11 +58,54 @@ function badgeFor(status: PipelineStatus, b: BuildRow | undefined, ltd: boolean)
   const s = b?.state;
   if (s === 'failed') return { text: `Failed at ${b?.failed_step ?? 'a step'}`, tone: 'bad' };
   if (s === 'awaiting_photos' || s === 'awaiting_concept') return { text: s === 'awaiting_photos' ? 'Sort the photos' : 'Choose a concept', tone: 'warn' };
+  if (s === 'awaiting_call') return { text: 'Call them first', tone: 'warn' };
   if (s === 'revising') return { text: 'Revising', tone: 'info' };
+  if (s === 'awaiting_usage') return { text: 'Paused, usage', tone: 'info' };
   if (status === 'followup_1') return { text: 'Followed up', tone: 'info' };
   if (status === 'followup_2') return { text: 'Followed up twice', tone: 'info' };
   if (s === 'approved' && status === 'preview_ready' && !ltd) return { text: 'No cold email', tone: 'info' };
   return null;
+}
+
+type NamedBuild = BuildRow & { slug: string; name: string };
+const shortDay = (iso: string) => new Date(iso).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+const minutesSince = (iso: string) => Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 60_000));
+
+/** The one line on a card that says what's happening at this stage. */
+function stageLine(col: BoardColumn, b: NamedBuild | undefined, full: NonNullable<ReturnType<typeof getFullLead>>): BoardCard['stageLine'] {
+  const p = full.pipeline;
+  const job = b ? activeJobFor(b.slug) : null;
+  switch (col) {
+    case 'picked': return { text: b && b.state !== 'picked' && b.state !== 'torn_down' ? `Build ${b.state.replace(/_/g, ' ')}` : 'Not built yet', tone: 'muted' };
+    case 'building': {
+      if (!b) return null;
+      if (b.state === 'failed') return { text: `Stopped at ${b.failed_step ?? 'a step'}`, tone: 'bad' };
+      if (b.state === 'awaiting_usage' && job === null) return { text: 'Paused at the usage limit, carries on by itself', tone: 'muted' };
+      const step = toBuildSummary(b, job, 0).rail.find((r) => r.status === 'current' || r.status === 'waiting');
+      if (job !== null) { const j = activeJobs().find((x) => x.id === job); return { text: `${step?.label ?? 'Starting'}${j?.startedAt ? ` · ${minutesSince(j.startedAt)} min` : ''}`, tone: 'live' }; }
+      if (step) return { text: `${step.label}: waiting for you`, tone: 'warn' };
+      const next = toBuildSummary(b, null, 0).rail.find((r) => r.status === 'todo');
+      return { text: next ? `Paused before ${next.label.toLowerCase()}, not running` : 'Not running', tone: 'muted' };
+    }
+    case 'preview': { const r = sentRounds(full.lead.slug); return { text: r ? `Revision ${r} ready to review` : 'Ready for your review', tone: 'warn' }; }
+    case 'ready': { const r = toReach(full); return { text: r.emailAllowed ? `Ready to email ${r.email}` : r.level === 'message' ? 'Ready: call, then send the link' : 'Ready: call or walk in', tone: 'ok' }; }
+    case 'sent': {
+      if (p.next_touch_at) { const due = Date.parse(p.next_touch_at) <= Date.now(); return { text: `${p.status === 'contacted' ? 'Follow-up 1' : 'Follow-up 2'} ${due ? 'due now' : `due ${shortDay(p.next_touch_at)}`}`, tone: due ? 'warn' : 'info' }; }
+      return { text: `Pitched ${p.contacted_at ? shortDay(p.contacted_at) : ''}${p.channel ? ` by ${p.channel.replace('_', ' ')}` : ''}`.trim(), tone: 'info' };
+    }
+    case 'replied': return { text: `Replied ${p.last_touch_at ? shortDay(p.last_touch_at) : ''}: log the outcome`.replace(' :', ':'), tone: 'warn' };
+    case 'won': return { text: 'Won', tone: 'ok' };
+    case 'closed': return { text: p.status === 'do_not_contact' ? 'Do not contact' : 'Lost', tone: 'muted' };
+  }
+}
+
+function cardDetail(slug: string, col: BoardColumn, b: NamedBuild | undefined): Pick<BoardCard, 'hook' | 'rating' | 'reviews' | 'websiteStatus' | 'reach' | 'phone' | 'previewUrl' | 'stageLine'> {
+  const full = getFullLead(slug)!;
+  return {
+    hook: hook(full), rating: full.lead.rating, reviews: full.lead.review_count ?? 0, websiteStatus: full.audit?.website_status ?? null,
+    reach: toReach(full), phone: full.lead.phone_e164 ? displayUkPhone(full.lead.phone_e164) : null,
+    previewUrl: b?.preview_url ?? null, stageLine: stageLine(col, b, full),
+  };
 }
 
 export function board(): Board {
@@ -76,6 +122,7 @@ export function board(): Board {
       since: b && b.updated_at > r.updated_at && col !== 'sent' && col !== 'replied' ? b.updated_at : r.updated_at,
       badge: badgeFor(r.status, b, r.match_confidence === 'high'),
       moves: movesFor(col, state),
+      ...cardDetail(r.slug, col, b),
     });
   }
   const newLeads = (d().prepare("SELECT COUNT(*) n FROM pipeline WHERE status = 'new'").get() as { n: number }).n;
@@ -88,9 +135,10 @@ function inbox(): InboxItem[] {
   for (const b of listBuilds()) {
     const st = statuses.get(b.slug);
     if (!st || st.status === 'lost' || st.status === 'do_not_contact' || st.status === 'won') continue;
-    if (activeJobFor(b.slug) !== null && b.state !== 'awaiting_photos' && b.state !== 'awaiting_concept') continue;
+    if (activeJobFor(b.slug) !== null) continue; // running: nothing to ask you until it stops
     const base = { slug: b.slug, name: b.name, at: b.updated_at };
     if (b.state === 'failed') items.push({ ...base, kind: 'failed', tab: 'progress', detail: `Failed at ${b.failed_step ?? 'a step'}: ${(b.last_error ?? '').replace(/\s+/g, ' ').slice(0, 120)}` });
+    else if (b.state === 'awaiting_call') items.push({ ...base, kind: 'call', tab: 'overview', detail: 'Thirty seconds on the phone before anything is built: the script is on the Overview tab.' });
     else if (b.state === 'awaiting_photos') {
       let n = 0; try { n = listPhotos(b.repo_dir ?? siteDir(b.slug)).length; } catch { /* unknown */ }
       items.push({ ...base, kind: 'photos', tab: 'photos', detail: n ? `${n} photos to sort before design starts` : 'Photos to sort before design starts' });
@@ -109,7 +157,7 @@ function inbox(): InboxItem[] {
   try {
     for (const f of dueFollowUps()) items.push({ slug: f.slug, name: f.name, at: f.dueAt, kind: 'followup', tab: 'deliver', detail: `${f.last ? 'Last follow-up' : `Follow-up ${f.n}`} due · ${f.channel === 'email' ? 'email' : f.channel.replace('_', ' ')}` });
   } catch { /* outreach not set up yet */ }
-  const order = ['failed', 'photos', 'concept', 'review', 'send', 'followup', 'reply'];
+  const order = ['failed', 'call', 'photos', 'concept', 'review', 'send', 'followup', 'reply'];
   return items.sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind) || (a.at < b.at ? -1 : 1));
 }
 

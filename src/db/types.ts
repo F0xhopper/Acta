@@ -35,6 +35,12 @@ export interface LeadRow {
   reviews_json: string | null;
   last_review_at: string | null;
   photo_count: number | null;
+  manual_email?: string | null;   // an email you found yourself
+  found_site_url?: string | null; // their own site, found by name when Google links none (src/audit/find-site.ts)
+  site_search_at?: string | null;
+  web_email?: string | null;      // found by searching the open web, checked against the page it came from (src/audit/web-email.ts)
+  web_email_url?: string | null;
+  email_search_at?: string | null;
   discovered_at: string;
   last_seen_at: string;
 }
@@ -52,6 +58,7 @@ export interface CompaniesHouseRow {
   match_confidence: MatchConfidence;
   ltd_hint_from_site: number;
   matched_at: string;
+  date_of_creation?: string | null;   // incorporated on (YYYY-MM-DD); a young company is the classic first-site buyer
 }
 
 export interface AuditRow {
@@ -92,6 +99,15 @@ export interface AuditRow {
   listing_link_broken?: number | null;
   site_description?: string | null;
   rendered_rescue?: number | null;
+  emails_json?: string | null;     // emails published on their own site
+  socials_json?: string | null;    // social profiles linked from their own site
+  contact_checked_at?: string | null;
+  // Dead sites (src/audit/rescue.ts): the domain's registration state and the last archived copy of the site.
+  domain_status?: 'registered' | 'expiring' | 'available' | 'unknown' | null;
+  domain_expires_at?: string | null;
+  wayback_url?: string | null;     // the archived copy on web.archive.org, as a browser shows it
+  wayback_at?: string | null;      // when that copy was taken
+  rescued_at?: string | null;
 }
 
 export interface ScoreRow {
@@ -117,10 +133,14 @@ export interface PipelineRow {
   updated_at: string;
 }
 
+/** Reviews gained between the first and the latest sighting of the listing: an unbiased sign the business is active. */
+export interface ReviewVelocity { gained: number; days: number; firstAt: string; lastAt: string; sightings: number }
+
 export interface FullLead {
   lead: LeadRow;
   audit: AuditRow | null;
   ch: CompaniesHouseRow | null;
   score: ScoreRow | null;
   pipeline: PipelineRow;
+  velocity?: ReviewVelocity | null;
 }

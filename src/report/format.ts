@@ -1,6 +1,6 @@
 import { existsSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { OUT_DIR } from '../config.js';
+import { loadScoring, OUT_DIR } from '../config.js';
 import type { FullLead } from '../db/types.js';
 import { hostOf } from '../util/http.js';
 import { displayUkPhone } from '../util/phone.js';
@@ -94,10 +94,14 @@ export function hook(r: FullLead): string {
   const host = audit?.final_domain ?? (lead.website_url ? hostOf(lead.website_url) : null) ?? '';
   switch (audit?.website_status) {
     case 'none': return `No website. ${cap(proof)} on Google, but nowhere to send people.`;
-    case 'down': return `Website is down. The link on their Google listing goes nowhere, and they have ${proof}.`;
+    case 'down':
     case 'broken': {
+      const copy = audit.wayback_url ? ` An archived copy${audit.wayback_at ? ` from ${new Date(audit.wayback_at).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })}` : ''} gives the build real material.` : '';
+      if (audit.domain_status === 'available') return `Domain expired${host ? ` (${host})` : ''}: free to register again, and they have ${proof}. Offer to get it back.${copy}`;
+      if (audit.domain_status === 'expiring') return `Domain lapsing${host ? ` (${host})` : ''}: the site is gone and the name is about to go too. ${cap(proof)}.${copy}`;
+      if (audit.website_status === 'down') return `Website is down. The link on their Google listing goes nowhere, and they have ${proof}.${copy}`;
       const why = audit.tls_error ? ' (security certificate error)' : audit.http_status && audit.http_status >= 400 ? ` (${audit.http_status} error)` : ' (parked or empty page)';
-      return `Website is broken${why}. Anyone clicking through from Google hits a dead end.`;
+      return `Website is broken${why}. Anyone clicking through from Google hits a dead end.${copy}`;
     }
     case 'facebook_only': return `Only a social media page. ${cap(proof)}, but no site of their own.`;
     case 'directory_only': return `Only a directory listing${host ? ` on ${host}` : ''}. No site of their own.`;
@@ -109,6 +113,7 @@ export function hook(r: FullLead): string {
       if (audit.https_ok === 0) p.push('has no HTTPS, so browsers mark it not secure');
       if (audit.lh_perf !== null && audit.lh_perf < 50) p.push(`is slow on a phone (Lighthouse ${audit.lh_perf}/100)`);
       if (audit.free_tier_host) p.push(`is still on a free ${audit.builder ?? 'builder'} address`);
+      else if (audit.builder && loadScoring().cheap_builders.includes(audit.builder)) p.push(`is a ${audit.builder.charAt(0).toUpperCase()}${audit.builder.slice(1)} template, which shows on a phone`);
       if (audit.copyright_year && new Date().getFullYear() - audit.copyright_year >= 3) p.push(`looks untouched since ${audit.copyright_year}`);
       if (audit.lh_seo !== null && audit.lh_seo < 70) p.push(`has weak Google basics (SEO ${audit.lh_seo}/100)`);
       if (!p.length) return 'Site works but could be doing more for them.';

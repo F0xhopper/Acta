@@ -1,7 +1,8 @@
 import { chromium, devices } from 'playwright';
 import { hostMatches, hostOf } from '../../util/http.js';
 import { loadScoring } from '../../config.js';
-import { parsePage } from './parse.js';
+import { archiveOriginal } from '../../audit/rescue.js';
+import { isArchiveUrl, parsePage } from './parse.js';
 import type { PageData, PageStyles } from './types.js';
 
 const LINK_RE = /about|service|contact|gallery|team|our|work|price|menu|treatment/i;
@@ -20,6 +21,10 @@ export async function crawlSite(startUrl: string, opts: { max?: number; log?: (m
   const scoring = loadScoring();
   const host = hostOf(startUrl);
   if (!host || hostMatches(host, [...scoring.hosts.social, ...scoring.hosts.directory, ...scoring.hosts.platform])) return [];
+  // An archived copy (web.archive.org): inner links wrap the original URL, so the same-site test looks at the original.
+  const archive = isArchiveUrl(startUrl);
+  const originalHost = archive ? hostOf(archiveOriginal(startUrl) ?? '') : null;
+  if (archive && !originalHost) return [];
   const pages: PageData[] = [];
   const browser = await chromium.launch({ headless: true });
   const ctx = await browser.newContext({ ...devices['iPhone 13'], ignoreHTTPSErrors: true, locale: 'en-GB' });
@@ -34,6 +39,7 @@ export async function crawlSite(startUrl: string, opts: { max?: number; log?: (m
       try {
         try { await page.goto(url, { waitUntil: 'networkidle', timeout }); } catch { await page.goto(url, { waitUntil: 'load', timeout }); }
         await page.waitForTimeout(800);
+        if (archive) await page.evaluate(removeWaybackChrome);
         const html = await page.content();
         const ev = await page.evaluate(evaluatePage);
         const data = parsePage(html, page.url());
@@ -53,8 +59,16 @@ export async function crawlSite(startUrl: string, opts: { max?: number; log?: (m
             let u: URL;
             try { u = new URL(l.href, url); } catch { continue; }
             if (u.hostname.replace(/^www\./, '') !== host) continue;
-            if (!LINK_RE.test(u.pathname) && !LINK_RE.test(l.text)) continue;
-            if (/\.(pdf|jpg|png|zip)$/i.test(u.pathname)) continue;
+            let path = u.pathname;
+            if (archive) {
+              // Only the business's own pages, as they were: not the archive's copies of the sites it linked to.
+              let o: URL;
+              try { o = new URL(archiveOriginal(u.toString()) ?? ''); } catch { continue; }
+              if (o.hostname.replace(/^www\./, '') !== originalHost) continue;
+              path = o.pathname;
+            }
+            if (!LINK_RE.test(path) && !LINK_RE.test(l.text)) continue;
+            if (/\.(pdf|jpg|png|zip)$/i.test(path)) continue;
             u.hash = '';
             const key = u.toString().replace(/\/$/, '');
             if (seen.has(key)) continue;
@@ -73,6 +87,12 @@ export async function crawlSite(startUrl: string, opts: { max?: number; log?: (m
     await browser.close();
   }
   return pages;
+}
+
+/** Runs in the page: drop the Wayback Machine's toolbar and scripts before the page is read. */
+function removeWaybackChrome(): void {
+  for (const id of ['wm-ipp-base', 'wm-ipp', 'wm-ipp-print', 'donato', 'wm-ipp-inner']) document.getElementById(id)?.remove();
+  document.querySelectorAll('script[src*="/_static/"], link[href*="/_static/"], style[id^="wm-"]').forEach((el) => el.remove());
 }
 
 function evaluatePage(): Evaluated {

@@ -49,9 +49,9 @@ describe('DeliverTab', () => {
   it('locks email for a sole trader', async () => {
     mount({ ...base, emailAllowed: false, channel: 'phone', complianceNote: 'Sole trader: no cold email.' });
     expect(await screen.findByText('No cold email')).toBeInTheDocument();
-    expect(screen.getByText(/Sole trader: no cold email/)).toBeInTheDocument();
+    expect(screen.getAllByText(/Sole trader: no cold email/).length).toBeGreaterThan(0);
     screen.getByRole('radio', { name: 'Email' }).click();
-    expect(await screen.findByText(/Email is locked for this business/)).toBeInTheDocument();
+    expect(await screen.findByText(/Email is off for this business/)).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /Open in Mail/ })).not.toBeInTheDocument();
   });
 

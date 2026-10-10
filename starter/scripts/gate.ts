@@ -4,7 +4,7 @@
 //      pnpm gate --ci       same gates, flags the report as CI
 //      pnpm gate --url URL  check a running site instead of building
 import { execSync } from 'node:child_process';
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import * as cheerio from 'cheerio';
 import { chromium } from 'playwright';
@@ -140,7 +140,25 @@ async function crawl(base: string): Promise<Map<string, Page>> {
 }
 
 const pub = (src: string) => (src.startsWith('/_next/image') ? decodeURIComponent(new URL(src, 'http://x').searchParams.get('url') ?? '') : src.split('?')[0]);
-const kb = (p: string) => (existsSync(p) ? statSync(p).size / 1024 : null);
+
+/**
+ * What an image weighs as served to a phone, not what the source file weighs: for next/image, the srcset candidate a
+ * 390px phone at 2x would pick (the largest at or under 828px), fetched with a browser's Accept header so the optimiser
+ * answers with AVIF or WebP as it would for a visitor; for a plain <img>, the file itself.
+ */
+async function servedKb(base: string, src: string, srcset: string): Promise<{ kb: number; via: 'next/image' | 'file' } | null> {
+  let url = src;
+  if (src.startsWith('/_next/image')) {
+    const cands = srcset.split(',').map((s) => s.trim().split(/\s+/)[0]).filter(Boolean).map((u) => ({ u, w: Number(new URL(u, 'http://x').searchParams.get('w')) || 0 }));
+    const phone = cands.filter((c) => c.w && c.w <= 828).sort((a, b) => b.w - a.w)[0];
+    url = phone?.u ?? src;
+  } else if (!src.startsWith('/')) return null;
+  try {
+    const r = await fetch(new URL(url, base), { headers: { accept: 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8' } });
+    if (!r.ok) return null;
+    return { kb: (await r.arrayBuffer()).byteLength / 1024, via: url.startsWith('/_next/image') ? 'next/image' : 'file' };
+  } catch { return null; }
+}
 
 async function lighthouseGate(base: string): Promise<Gate> {
   const [{ default: lighthouse }, chromeLauncher] = await Promise.all([import('lighthouse'), import('chrome-launcher')]);
@@ -197,28 +215,32 @@ async function linksGate(base: string, pages: Map<string, Page>): Promise<Gate> 
   return { name: 'links', pass: details.length === 0, value: `${pages.size} pages, ${external.size} external`, details };
 }
 
-function imagesGate(pages: Map<string, Page>, brandPhotos: number): Gate {
+/** Every image has alt text, weighs little as served to a phone, and the home page uses their photos. Sources stay large; next/image does the serving. */
+async function imagesGate(base: string, pages: Map<string, Page>, brandPhotos: number): Promise<Gate> {
   const details: string[] = [];
+  const measured = new Map<string, Awaited<ReturnType<typeof servedKb>>>();
   let heroChecked = false;
   for (const p of pages.values()) {
     const $ = cheerio.load(p.html);
-    $('img').each((i, el) => {
+    for (const el of $('img').toArray()) {
       const alt = $(el).attr('alt');
       const decorative = $(el).attr('aria-hidden') === 'true' || $(el).attr('role') === 'presentation';
-      if ((alt === undefined || alt.trim() === '') && !decorative) details.push(`${p.path}: <img src="${$(el).attr('src')?.slice(0, 60)}"> has no alt`);
-      const src = pub($(el).attr('src') ?? '');
-      if (src.startsWith('/')) {
-        const size = kb(join('public', src));
-        if (size !== null) {
-          if (size > 300) details.push(`${p.path}: ${src} is ${Math.round(size)} KB (max 300)`);
-          if (p.path === '/' && i === 0 && !heroChecked) { heroChecked = true; if (size > 150) details.push(`hero image ${src} is ${Math.round(size)} KB (max 150)`); }
-        }
-      }
-    });
+      const src = $(el).attr('src') ?? '';
+      if ((alt === undefined || alt.trim() === '') && !decorative) details.push(`${p.path}: <img src="${src.slice(0, 60)}"> has no alt`);
+      if (!src.startsWith('/')) continue;
+      const file = pub(src);
+      const isPhoto = /^\/(brand\/photos|images)\//.test(file);
+      const key = `${src}|${$(el).attr('srcset') ?? ''}`;
+      if (!measured.has(key)) measured.set(key, measured.size < 60 ? await servedKb(base, src, $(el).attr('srcset') ?? '') : null);
+      const m = measured.get(key);
+      if (!m) continue;
+      if (m.kb > 250) details.push(`${p.path}: ${file} serves ${Math.round(m.kb)} KB on a phone (max 250)${m.via === 'file' && isPhoto ? '; render photos with next/image and a sizes attribute' : ''}`);
+      if (p.path === '/' && isPhoto && !heroChecked) { heroChecked = true; if (m.kb > 200) details.push(`hero photo ${file} serves ${Math.round(m.kb)} KB on a phone (max 200): check its sizes attribute and quality`); }
+    }
   }
   const home = pages.get('/');
   if (brandPhotos > 0 && home && !home.html.includes('/brand/photos/')) details.push('brand.json has photos but / uses none of them');
-  return { name: 'images', pass: details.length === 0, value: `${brandPhotos} brand photos available`, details };
+  return { name: 'images', pass: details.length === 0, value: `${brandPhotos} brand photos available, ${measured.size} images weighed as served`, details };
 }
 
 function factsGate(pages: Map<string, Page>): Gate {
@@ -323,7 +345,7 @@ async function main() {
     const push = (g: Gate) => { gates.push(g); log(`${g.pass ? 'PASS' : 'FAIL'} ${g.name}${g.value ? ` (${g.value})` : ''}${g.details?.length && !g.pass ? `\n  ${g.details.slice(0, 8).join('\n  ')}` : ''}`); };
     if (!flag('--skip-lighthouse')) { log('lighthouse'); push(await lighthouseGate(base)); } else gates.push({ name: 'lighthouse', pass: true, value: 'skipped (--skip-lighthouse)' });
     push(await linksGate(base, pages));
-    push(imagesGate(pages, brand?.photos.length ?? 0));
+    push(await imagesGate(base, pages, brand?.photos.length ?? 0));
     push(factsGate(pages));
     push(claimsGate(pages, facts));
     push(contrastGate());

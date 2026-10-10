@@ -6,6 +6,7 @@ import { leadSlug, normaliseName } from '../util/slug.js';
 import { isChainName } from '../util/business.js';
 import { log } from '../util/log.js';
 import { parseQuery, type ParsedQuery } from './parse-query.js';
+import { inMarket } from './areas.js';
 import { outwardCode, postcodeOf, searchText, type Budget, type PlaceResult } from './places.js';
 
 export interface DiscoverOpts { pages?: number; dryRun?: boolean; anyPostcode?: boolean; runId?: number; budget: Budget; variants?: boolean }
@@ -71,6 +72,8 @@ export async function discover(rawQuery: string, opts: DiscoverOpts): Promise<Di
       pages: opts.pages,
       budget: opts.budget,
       dryRun: opts.dryRun,
+      centre: parsed.market ? { latitude: parsed.market.centre[0], longitude: parsed.market.centre[1] } : undefined,
+      radiusM: parsed.market ? parsed.market.radius_km * 1000 : undefined,
       onRequest: () => { if (opts.runId) bumpRun(opts.runId, 'places_requests'); },
     }));
   }
@@ -82,7 +85,8 @@ export async function discover(rawQuery: string, opts: DiscoverOpts): Promise<Di
     if (!place.id) { skip('no_id'); continue; }
     if (place.businessStatus && place.businessStatus !== 'OPERATIONAL') { skip('not_operational'); continue; }
     const lead = placeToLead(place, parsed);
-    if (!opts.anyPostcode && !(lead.outward_code && /^B\d/.test(lead.outward_code))) { skip('outside_birmingham'); continue; }
+    // Inside a configured market, keep its postcode areas only (Google pads results with the next town over).
+    if (!opts.anyPostcode && parsed.market && !inMarket(lead.outward_code, parsed.market)) { skip(`outside_${parsed.market.key}`); continue; }
     if (lead.phone_e164) {
       const other = leadByPhone(lead.phone_e164);
       if (other && other.place_id !== lead.place_id && normaliseName(other.name) === normaliseName(lead.name)) { skip('duplicate_phone'); continue; }

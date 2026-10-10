@@ -3,6 +3,26 @@ import { spawn } from 'node:child_process';
 export interface ExecResult { code: number | null; stdout: string; stderr: string; timedOut: boolean; seconds: number }
 export interface ExecOpts { cwd: string; env?: NodeJS.ProcessEnv; timeoutMs?: number; input?: string; onLine?: (line: string) => void; inheritEnv?: boolean; onSpawn?: (pid: number) => void }
 
+/**
+ * Children run in their own process group (so a timeout can kill the whole tree), which also means a signal to
+ * this process doesn't reach them. Track them, and when this process is told to stop (a build cancelled from the
+ * UI, Ctrl+C), stop them first: otherwise the design agent keeps running, orphaned, using Claude usage.
+ */
+const live = new Set<number>();
+let handlersInstalled = false;
+function stopChildren(signal: NodeJS.Signals) {
+  for (const pid of live) { try { process.kill(-pid, 'SIGTERM'); } catch { try { process.kill(pid, 'SIGTERM'); } catch { /* gone */ } } }
+  process.exit(signal === 'SIGINT' ? 130 : 143);
+}
+function track(pid: number) {
+  live.add(pid);
+  if (!handlersInstalled) {
+    handlersInstalled = true;
+    for (const s of ['SIGTERM', 'SIGINT', 'SIGHUP'] as const) process.once(s, () => stopChildren(s));
+  }
+}
+export const liveChildren = () => [...live];
+
 /** Run a command, capture output, kill the whole process group on timeout. */
 export function run(cmd: string, args: string[], opts: ExecOpts): Promise<ExecResult> {
   const t0 = Date.now();
@@ -13,7 +33,7 @@ export function run(cmd: string, args: string[], opts: ExecOpts): Promise<ExecRe
       stdio: ['pipe', 'pipe', 'pipe'],
       detached: process.platform !== 'win32',
     });
-    if (child.pid) opts.onSpawn?.(child.pid);
+    if (child.pid) { track(child.pid); opts.onSpawn?.(child.pid); }
     let stdout = '';
     let stderr = '';
     let timedOut = false;
@@ -33,11 +53,13 @@ export function run(cmd: string, args: string[], opts: ExecOpts): Promise<ExecRe
       try { if (child.pid) process.kill(-child.pid, 'SIGKILL'); } catch { child.kill('SIGKILL'); }
     }, opts.timeoutMs) : null;
     child.on('close', (code) => {
+      if (child.pid) live.delete(child.pid);
       if (timer) clearTimeout(timer);
       if (partial && opts.onLine) opts.onLine(partial);
       resolve({ code, stdout, stderr, timedOut, seconds: Math.round((Date.now() - t0) / 1000) });
     });
     child.on('error', (e) => {
+      if (child.pid) live.delete(child.pid);
       if (timer) clearTimeout(timer);
       resolve({ code: -1, stdout, stderr: stderr + String(e), timedOut, seconds: Math.round((Date.now() - t0) / 1000) });
     });

@@ -1,30 +1,33 @@
-# The weekly discovery sweep. Each search is one trade across an area group from config/areas.yaml
-# (or a comma list of areas). The sweep runs the searches that are due, best yield first, until the
-# Places request budget for the run is used. Over several weeks it rotates through everything.
-budget: 30                 # Places requests per sweep run (cached searches cost nothing)
+# Automatic lead finding. Every day the sweep runs the searches the opportunity map rates best, within a
+# Places request budget, then audits, matches and scores what it found (`pnpm pipeline leads`).
+#
+# auto mode searches every category in config/categories.yaml across its area group in every active market in
+# config/areas.yaml (barbers on high streets, plumbers in the suburbs, dentists in the affluent areas). It learns
+# which trades and areas give good leads (tier A or B) from everything found so far, and gives a little budget to
+# trades and areas it knows least about, so it keeps finding new ground. See `pnpm pipeline searches`.
+budget: 24                 # Places requests per run. Daily, that's about 720 a month. Cached searches cost nothing
 pages: 2                   # pages of 20 results per query
 
-rotation:
-  revisit_days: 42         # a query is due again this long after its last run
-  keep_yield: 3.0          # tier A+B per 10 found: always re-run when due
-  drop_below: 1.0          # below this on two runs: retire the query
-  fresh_first: true        # never-run queries go before known-good ones so coverage grows
+mode: auto                 # auto: the whole grid, ranked. list: only the searches below
+trades: all                # or a list of category keys, e.g. [barber, beauty, plumber]
+skip_trades: []            # category keys never to search automatically
+variants: [plumber, electrician, roofer, builder, landscaper, fitter]
+                           # also search these categories' alternative terms ("fencing contractor", "loft conversion"):
+                           # owner-operators the headline word misses. About three times the requests for that search
 
-searches:
-  - { trade: barbers,            areas: high_streets }
-  - { trade: beauty salon,       areas: high_streets }
-  - { trade: cafes,              areas: high_streets }
-  - { trade: tattoo studio,      areas: high_streets }
-  - { trade: plumbers,           areas: trades, variants: true }
-  - { trade: electricians,       areas: trades, variants: true }
-  - { trade: roofers,            areas: trades }
-  - { trade: builders,           areas: trades }
-  - { trade: landscape gardener, areas: trades }
-  - { trade: painter and decorator, areas: trades }
-  - { trade: cleaning company,   areas: trades }
-  - { trade: personal trainers,  areas: high_streets }
-  - { trade: dentist,            areas: affluent }
-  - { trade: accountant,         areas: affluent }
-  - { trade: physiotherapist,    areas: affluent }
-  - { trade: estate agent,       areas: affluent }
-  - { trade: driving school,     areas: trades }
+ranking:
+  prior_strength: 15       # leads of evidence before a trade's own record outweighs the average
+  area_prior_strength: 40  # same for an area: higher, because what you sell matters more than which suburb
+  explore: 1.0             # how much to favour trades and areas with little evidence yet. 0 = only what's known to work
+  rerun_value: 0.3         # a re-run mostly finds businesses already known: worth this fraction of a new search
+  same_trade_decay: 0.7    # in one run, each further search of the same trade is worth this much less
+  same_area_decay: 0.85    # same for the same area
+
+rotation:
+  revisit_days: 42         # a search is due again this long after its last run
+  keep_yield: 3.0          # tier A+B per 10 found: always re-run when due
+  drop_below: 1.0          # below this on two runs: retire the search
+  fresh_first: true        # list mode only: never-run searches before known-good ones
+
+# Extra searches outside the grid (a trade or area not in the config). In list mode, the only ones.
+searches: []

@@ -11,6 +11,7 @@ import { enrichEntities } from '../discover/entity.js';
 import { placeToLead } from '../discover/index.js';
 import { resolveCategory, type ParsedQuery } from '../discover/parse-query.js';
 import { searchText, type Budget, type PlaceResult } from '../discover/places.js';
+import { homeMarket } from '../discover/areas.js';
 import { scoreLead } from '../score/score.js';
 import { nameSimilarity, slugify } from '../util/slug.js';
 
@@ -34,7 +35,7 @@ function categoryFor(place: PlaceResult, input: string): string {
 function areaFor(place: PlaceResult): string {
   const comps = place.addressComponents ?? [];
   const pick = (t: string) => comps.find((c) => c.types?.includes(t))?.longText;
-  const a = pick('sublocality_level_1') ?? pick('sublocality') ?? pick('neighborhood') ?? pick('locality') ?? pick('postal_town') ?? 'Birmingham';
+  const a = pick('sublocality_level_1') ?? pick('sublocality') ?? pick('neighborhood') ?? pick('locality') ?? pick('postal_town') ?? homeMarket()?.name ?? 'Unknown';
   return a;
 }
 
@@ -55,14 +56,17 @@ export async function resolveLead(input: string, opts: ResolveOpts): Promise<Ful
   if (opts.create === false) throw new Error(`No lead matches "${trimmed}". Run discover first or allow creation.`);
 
   say(`"${trimmed}" is not in the database, searching Google Places`);
-  const places = await searchText(`${trimmed}, Birmingham, UK`, { pages: 1, budget: opts.budget });
-  if (!places.length) throw new Error(`Google Places found nothing for "${trimmed}" in Birmingham`);
+  // A name alone is looked up in the home market (the first active one in config/areas.yaml); "Name, Town" works anywhere.
+  const home = homeMarket();
+  const where = /,/.test(trimmed) || !home ? '' : `, ${home.name}`;
+  const places = await searchText(`${trimmed}${where}, UK`, { pages: 1, budget: opts.budget, centre: home && where ? { latitude: home.centre[0], longitude: home.centre[1] } : undefined });
+  if (!places.length) throw new Error(`Google Places found nothing for "${trimmed}${where}"`);
   const best = places.map((p) => ({ p, sim: nameSimilarity(p.displayName?.text ?? '', trimmed) })).sort((a, b) => b.sim - a.sim)[0];
   if (best.sim < 0.5) throw new Error(`Closest Google match was "${best.p.displayName?.text}", which doesn't look like "${trimmed}". Give the exact business name.`);
   const categoryKey = categoryFor(best.p, trimmed);
   const parsed: ParsedQuery = {
     raw: `build: ${trimmed}`, categoryRaw: findCategory(categoryKey)?.keywords[0] ?? categoryKey.replace(/_/g, ' '), categoryKey,
-    category: findCategory(categoryKey) ?? loadCategories().find((c) => c.key === categoryKey), area: areaFor(best.p), textQuery: `${trimmed}, Birmingham, UK`,
+    category: findCategory(categoryKey) ?? loadCategories().find((c) => c.key === categoryKey), area: areaFor(best.p), market: where ? home : undefined, textQuery: `${trimmed}${where}, UK`,
   };
   const lead = placeToLead(best.p, parsed);
   const { id, inserted } = upsertLead(lead);

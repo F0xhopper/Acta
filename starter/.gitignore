@@ -47,3 +47,6 @@ next-env.d.ts
 /test-results
 
 /acta/qa/lighthouse-*.json
+
+# QA slices from pnpm shots: regenerated every run, read locally by the critic
+acta/qa/pages/

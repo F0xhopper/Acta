@@ -1,56 +1,30 @@
-import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+/**
+ * Is this site its own design, or a sibling of one already built? Compares design signatures (heading family,
+ * ground and primary, hero composition, body family) rather than screenshots: a different photo makes any two
+ * screenshots differ, while the same type on the same ground with the same hero reads as the same site.
+ */
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import sharp from 'sharp';
 import { DATA_DIR } from '../config.js';
+import { listBuilds } from './queries.js';
+import { readSignature, sameness, SAMENESS_LIMIT, type Signature } from './signature.js';
 
-/** 32x32 mean-threshold perceptual hash as a hex string. Cheap, and enough to say "this is the same layout". */
-export async function phash(file: string): Promise<string> {
-  const buf = await sharp(file).resize(32, 32, { fit: 'fill' }).grayscale().raw().toBuffer();
-  const mean = buf.reduce((a, b) => a + b, 0) / buf.length;
-  let hex = '';
-  for (let i = 0; i < buf.length; i += 4) {
-    let nibble = 0;
-    for (let j = 0; j < 4; j++) nibble = (nibble << 1) | (buf[i + j] > mean ? 1 : 0);
-    hex += nibble.toString(16);
+export interface Nearest { slug: string; name: string; score: number; reasons: string[] }
+export interface UniquenessResult { unique: boolean; nearest: Nearest | null; signature: Signature }
+
+const BUILT = ['built', 'gated', 'pushed', 'deployed', 'preview_ready', 'approved', 'live'];
+
+/** Compare this site's signature against every other site built. Saves this site's signature beside its build log. */
+export function checkUniqueness(slug: string, repoDir: string): UniquenessResult {
+  const signature = readSignature(repoDir);
+  const dir = join(DATA_DIR, 'builds', slug);
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, 'signature.json'), JSON.stringify(signature, null, 2));
+  let nearest: Nearest | null = null;
+  for (const b of listBuilds()) {
+    if (b.slug === slug || !b.repo_dir || !existsSync(b.repo_dir) || !BUILT.includes(b.state)) continue;
+    const s = sameness(signature, readSignature(b.repo_dir));
+    if (!nearest || s.score > nearest.score) nearest = { slug: b.slug, name: b.name, score: s.score, reasons: s.reasons };
   }
-  return hex;
-}
-
-export function similarity(a: string, b: string): number {
-  if (a.length !== b.length || !a.length) return 0;
-  let same = 0;
-  for (let i = 0; i < a.length; i++) {
-    const x = parseInt(a[i], 16) ^ parseInt(b[i], 16);
-    same += 4 - ((x & 1) + ((x >> 1) & 1) + ((x >> 2) & 1) + ((x >> 3) & 1));
-  }
-  return same / (a.length * 4);
-}
-
-export interface Hashes { hero: string; page: string }
-
-export function loadOtherHashes(slug: string): Record<string, Hashes> {
-  const root = join(DATA_DIR, 'builds');
-  if (!existsSync(root)) return {};
-  const out: Record<string, Hashes> = {};
-  for (const d of readdirSync(root)) {
-    if (d === slug) continue;
-    const f = join(root, d, 'hashes.json');
-    if (existsSync(f)) { try { out[d] = JSON.parse(readFileSync(f, 'utf8')); } catch { /* ignore */ } }
-  }
-  return out;
-}
-
-export const UNIQUE_THRESHOLD = 0.92;
-
-/** Compare this site's hero and page against every other site built. Saves this site's hashes. */
-export async function checkUniqueness(slug: string, heroPng: string, pagePng: string): Promise<{ unique: boolean; nearest: { slug: string; hero: number; page: number } | null; hashes: Hashes }> {
-  const hashes: Hashes = { hero: await phash(heroPng), page: await phash(pagePng) };
-  writeFileSync(join(DATA_DIR, 'builds', slug, 'hashes.json'), JSON.stringify(hashes));
-  let nearest: { slug: string; hero: number; page: number } | null = null;
-  for (const [other, h] of Object.entries(loadOtherHashes(slug))) {
-    const s = { slug: other, hero: similarity(hashes.hero, h.hero), page: similarity(hashes.page, h.page) };
-    if (!nearest || Math.max(s.hero, s.page) > Math.max(nearest.hero, nearest.page)) nearest = s;
-  }
-  const unique = !nearest || (nearest.hero < UNIQUE_THRESHOLD && nearest.page < UNIQUE_THRESHOLD);
-  return { unique, nearest, hashes };
+  return { unique: !nearest || nearest.score < SAMENESS_LIMIT, nearest, signature };
 }

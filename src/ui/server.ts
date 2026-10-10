@@ -13,7 +13,7 @@ import { openDb } from '../db/index.js';
 import { fullLeads, getFullLead, setStatus } from '../db/queries.js';
 import type { PipelineStatus } from '../db/types.js';
 import { applyStatus } from '../crm/status.js';
-import { pickManual, unpick } from '../pick/index.js';
+import { pickManual, recordCallOutcome, unpick } from '../pick/index.js';
 import { approve } from '../build/index.js';
 import { getBuild, listBuilds, recentEvents, setBuildState } from '../build/queries.js';
 import { envInt } from '../config.js';
@@ -21,18 +21,47 @@ import {
   agentPick, chooseConcept, chosenConcept, conceptsWritten, DROP_REASONS, listPhotos, loadCheckpoints, parseConcepts, PATHS, readConceptsMd, readCuration, resetConcepts, saveCuration,
 } from '../build/checkpoints.js';
 import { generateDelivery, markSent, readDelivery, senderMissing, updateDelivery } from '../delivery/index.js';
-import type { BoardColumn, BuildDetail, ConceptSet, Device, Job, Meta, PhotoSet, TimelineEntry } from './api-types.js';
+import type { BoardColumn, BuildDetail, ConceptSet, Device, Finding, Job, Meta, PhotoSet, Suggestion, TimelineEntry } from './api-types.js';
+import { suggestions } from '../pick/suggest.js';
+import { setSweep, loadAutomation } from '../loop/automation.js';
+import { autopilotStatus, loadAutopilotConfig, setAutopilot, startAutopilot } from '../loop/autopilot.js';
+import { jobInstalled } from '../loop/schedule.js';
+import { sweepStates } from '../sweep/index.js';
+import { loadSweep } from '../sweep/config.js';
+import { planSweep } from '../sweep/plan.js';
+import { observations } from '../sweep/queries.js';
+import { leagues } from '../sweep/opportunity.js';
 import { contentType, fileUrl, resolveFile } from './files.js';
 import { activeJobFor, cancelJob, enqueue, getJob, jobArgs, jobRow, listJobs, onJobDone, readLog, recoverAndRun, cleanLine } from './jobs.js';
 import { addFeedback, deleteFeedback, listFeedback, prepareRound, sentRounds, unsentCount, updateFeedback } from './feedback.js';
-import { agentProgress, docsOf, pageShots, roundsOf, siteDir, toBuildSummary, toLeadDetail, toLeadSummary } from './mappers.js';
+import { agentProgress, categoryLabel, docsOf, pageShots, roundsOf, siteDir, toBuildSummary, toContent, toLeadDetail, toLeadSummary, toReach , gradeOf } from './mappers.js';
 import { board, movesFor, summary, columnFor } from './summary.js';
 import { getUsage, overLimit } from './usage-cache.js';
 import { dnsChecks, doFollowUp, followUpFor, logContact, onStatusChange, OutreachError, outreachStatus, pitchBlockers, sendPitch, undoPitch } from '../outreach/index.js';
 import { messagesFor, type MessageRow } from '../outreach/store.js';
 import { checkReplies } from '../outreach/replies.js';
 import { startOutreachTicker } from '../outreach/tick.js';
+import { opensConfigured, opensFor } from '../outreach/opens.js';
+import { outreachStats } from '../outreach/stats.js';
 import type { OutreachMessage } from './api-types.js';
+
+
+/** Automatic lead finding: whether it's on, what the next run would search, and where the good leads have come from. */
+function finding(): Finding {
+  const cfg = loadSweep();
+  const states = sweepStates(cfg);
+  const plan = planSweep(states, cfg);
+  const { trades, areas } = leagues(observations());
+  const enough = <T extends { found: number }>(l: T[]) => l.filter((x) => x.found >= 10).slice(0, 5);
+  const auto = loadAutomation();
+  const viaAutopilot = auto.autopilot && jobInstalled('ui');   // the always-on server runs the daily search itself
+  return {
+    on: auto.sweep, scheduled: jobInstalled('leads') || viaAutopilot, runsAt: auto.autopilot ? `${loadAutopilotConfig().leads_at} daily (autopilot)` : '07:30 daily', budget: cfg.budget, possible: states.length,
+    next: plan.run.map((r) => ({ query: r.query, per10: Math.round((r.rate ?? 0) * 100) / 10, fresh: r.runs === 0, why: r.why ?? [] })),
+    bestTrades: enough(trades).map((t) => ({ label: categoryLabel(t.key), per10: t.per10, found: t.found })),
+    bestAreas: enough(areas).map((a) => ({ label: a.key, per10: a.per10, found: a.found })),
+  };
+}
 
 export const PORT = Number(process.env.ACTA_UI_PORT ?? 4321);
 const UI_DIST = join(ROOT, 'ui', 'dist');
@@ -162,6 +191,9 @@ export function createApp() {
     const text = (q.q ?? '').trim().toLowerCase();
     const builds = new Map(listBuilds().map((b) => [b.slug, b.state]));
     const rows = fullLeads({ tiers, statuses })
+      .filter((f) => !q.reach || q.reach.split(',').includes(toReach(f).level))
+      .filter((f) => !q.verdict || q.verdict.split(',').includes(gradeOf(f).verdict))
+      .filter((f) => { if (!q.email) return true; const r = toReach(f); return q.email === 'has' ? !!r.email : q.email === 'cold' ? r.emailAllowed : q.email === 'none' ? !r.email : true; })
       .filter((f) => (!q.category || f.lead.category_key === q.category) && (!q.area || f.lead.area === q.area)
         && (!text || `${f.lead.name} ${f.lead.area} ${f.lead.category_key} ${f.lead.address ?? ''}`.toLowerCase().includes(text)))
       .sort((a, b) => (b.score?.total ?? -1) - (a.score?.total ?? -1))
@@ -177,6 +209,32 @@ export function createApp() {
   });
   app.post('/api/leads/:slug/pick', (c) => { const r = pickManual([leadOr404(c.req.param('slug')).lead.slug]); return c.json({ ok: r.ok.length > 0, message: r.ok.length ? 'Picked' : 'Not found' }); });
   app.post('/api/leads/:slug/unpick', (c) => { const msg = unpick(leadOr404(c.req.param('slug')).lead.slug); return c.json({ ok: /back to new/.test(msg), message: msg }); });
+  app.post('/api/leads/:slug/call', async (c) => {
+    const b = await body<{ answer?: string; note?: string }>(c);
+    const slug = leadOr404(c.req.param('slug')).lead.slug;
+    if (b.answer !== 'yes' && b.answer !== 'no') fail(400, 'answer must be yes or no');
+    const msg = recordCallOutcome(slug, b.answer as 'yes' | 'no', b.note?.trim() || null);
+    return c.json({ ok: /: (yes|no)\./.test(msg), message: msg });
+  });
+  app.post('/api/leads/:slug/contact', async (c) => {
+    const b = await body<{ email?: string | null }>(c);
+    const full = leadOr404(c.req.param('slug'));
+    const email = (b.email ?? '').trim().toLowerCase();
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) fail(400, 'That doesn\'t look like an email address');
+    d().prepare('UPDATE leads SET manual_email = ? WHERE id = ?').run(email || null, full.lead.id);
+    const fresh = getFullLead(full.lead.slug)!;
+    const del = readDelivery(full.lead.slug);
+    if (del && !del.sentAt) updateDelivery(full.lead.slug, { to: email || toReach(fresh).email || '' });
+    return c.json({ ok: true, message: email ? `Saved ${email} for ${full.lead.name}` : 'Email removed', reach: toReach(fresh) });
+  });
+
+  app.post('/api/leads/:slug/web-email', (c) => {
+    const full = leadOr404(c.req.param('slug'));
+    const existing = d().prepare("SELECT id FROM jobs WHERE target = ? AND kind = 'email' AND status IN ('queued','running') LIMIT 1").get(full.lead.slug) as { id: number } | undefined;
+    if (existing) return c.json(getJob(existing.id));
+    return c.json(enqueue('email', full.lead.slug, `Find an email for ${full.lead.name}`, jobArgs('email', full.lead.slug)));
+  });
+
   app.post('/api/leads/:slug/status', async (c) => {
     const b = await body<{ status: string; note?: string }>(c);
     const slug = leadOr404(c.req.param('slug')).lead.slug;
@@ -189,9 +247,11 @@ export function createApp() {
   app.get('/api/outreach', async (c) => c.json(await outreachStatus()));
   app.post('/api/outreach/dns', async (c) => { await dnsChecks(undefined, true); return c.json(await outreachStatus()); });
   app.post('/api/outreach/replies', async (c) => c.json(await checkReplies()));
+  app.get('/api/outreach/stats', (c) => c.json(outreachStats()));
   app.get('/api/leads/:slug/outreach', (c) => {
     const full = leadOr404(c.req.param('slug'));
-    return c.json({ messages: messagesFor(full.lead.id).map(toMessage), followUp: followUpFor(full), nextTouchAt: full.pipeline.next_touch_at ?? null, pitchBlockers: pitchBlockers(full.lead.slug) });
+    return c.json({ messages: messagesFor(full.lead.id).map(toMessage), followUp: followUpFor(full), nextTouchAt: full.pipeline.next_touch_at ?? null, pitchBlockers: pitchBlockers(full.lead.slug),
+      opens: opensFor(full.lead.id), opensTracked: opensConfigured() });
   });
   app.post('/api/leads/:slug/followup', async (c) => {
     const b = await body<{ mode?: 'send' | 'logged'; subject?: string; body?: string; channel?: string; override?: boolean }>(c);
@@ -356,6 +416,34 @@ export function createApp() {
     return c.json(enqueue('search', query, `Search "${query}"`, jobArgs('search', query)));
   });
 
+  app.get('/api/suggestions', (c) => c.json(suggestions().map((x): Suggestion => {
+    const full = getFullLead(x.slug)!;
+    return { slug: x.slug, name: x.name, categoryLabel: x.categoryLabel, area: x.area, tier: x.tier, score: x.score, pickScore: x.pickScore,
+      reasons: x.reasons, reach: toReach(full), content: toContent(full), hook: x.hook, isNew: x.isNew, discoveredAt: x.discoveredAt,
+      qualify: { verdict: x.verdict, grade: x.grade, gates: x.gates, parts: x.parts } };
+  })));
+  app.get('/api/discovery', (c) => c.json(finding()));
+  app.post('/api/discovery/auto', async (c) => {
+    const b = await body<{ on?: boolean }>(c);
+    if (typeof b.on !== 'boolean') fail(400, 'Say on: true or on: false');
+    setSweep(b.on!);
+    return c.json(finding());
+  });
+  app.post('/api/discovery/run', (c) => {
+    const running = d().prepare("SELECT id FROM jobs WHERE kind = 'leads' AND status IN ('queued','running')").get() as { id: number } | undefined;
+    if (running) return c.json(getJob(running.id));
+    return c.json(enqueue('leads', null, 'Find new leads', jobArgs('leads', null)));
+  });
+
+  // ---- the autopilot ----
+  app.get('/api/autopilot', async (c) => c.json(await autopilotStatus()));
+  app.post('/api/autopilot', async (c) => {
+    const b = await body<{ on?: boolean }>(c);
+    if (typeof b.on !== 'boolean') fail(400, 'Say on: true or on: false');
+    setAutopilot(b.on!);
+    return c.json(await autopilotStatus());
+  });
+
   // ---- jobs ----
   app.get('/api/jobs', (c) => c.json(listJobs(Math.min(500, Number(c.req.query('limit') ?? 100)))));
   app.get('/api/jobs/:id', (c) => c.json(getJob(Number(c.req.param('id'))) ?? fail(404, 'No such job')));
@@ -470,8 +558,11 @@ export function startServer(port = PORT): { close: () => void } {
   const timer = recoverAndRun();
   autoShots();
   startOutreachTicker();
+  // The autopilot (src/loop/autopilot.ts): resumes builds paused at the usage limit, and when switched on runs the
+  // timetabled jobs, picks and builds by itself, and notifies you when a site is ready or a build fails.
+  const autopilot = startAutopilot();
   const server = serve({ fetch: createApp().fetch, port, hostname: '127.0.0.1' });
   console.log(`Acta UI on http://127.0.0.1:${port}${existsSync(join(UI_DIST, 'index.html')) ? '' : ' (API only: run `pnpm ui:build` for the app, or `pnpm ui:dev` and open http://localhost:5173)'}`);
   void getUsage();
-  return { close: () => { clearInterval(timer); server.close(); } };
+  return { close: () => { clearInterval(timer); clearInterval(autopilot); server.close(); } };
 }

@@ -5,7 +5,7 @@
 #   test    Acta "sends" by writing each email to out/outbox/ as a .eml file. Use it to try the whole flow safely.
 #   proton  Acta sends through Proton Mail Bridge running on this Mac (needs PROTON_BRIDGE_USER and PROTON_BRIDGE_PASSWORD in .env).
 #   resend  Acta sends through the Resend API (needs RESEND_API_KEY in .env).
-transport: manual
+transport: proton
 
 # The address pitches come from. Blank means the sender email in config/offer.yaml.
 from: ""
@@ -34,7 +34,7 @@ send_window:
 # Reply detection: read the inbox through Proton Mail Bridge, move businesses that answer to Replied
 # (which stops their follow-ups), and add anyone who asks you to stop to the do-not-contact list.
 replies:
-  check: false
+  check: true
   every_minutes: 10
 
 # Proton Mail Bridge, which runs on this Mac. These are Bridge's defaults.

@@ -7,12 +7,16 @@ import { keyedLock, pLimit } from '../util/limit.js';
 import { log } from '../util/log.js';
 import { classifyFetch, classifyUrl, looksParked } from './classify.js';
 import { fetchHomepage, type FetchResult } from './fetch.js';
+import { openDb } from '../db/index.js';
 import { runHtmlChecks, type HtmlChecks } from './html-checks.js';
+import { COMMON_CONTACT_PATHS, contactLinks, extractContacts, mergeContacts, type Contacts } from './contacts.js';
 import { runPsi } from './psi.js';
-import { closeBrowser, renderLooksReal, renderSite, type RenderResult } from './screenshot.js';
+import { closeBrowser, renderHtml, renderLooksReal, renderSite, type RenderResult } from './screenshot.js';
+import { findOwnSite } from './find-site.js';
+import { isDead, rescueDeadSite } from './rescue.js';
 
 export interface AuditOpts { query?: string; slug?: string; force?: boolean; psi?: boolean; screenshots?: boolean; runId?: number; dryRun?: boolean }
-export interface AuditDeps { fetchHomepage: typeof fetchHomepage; runPsi: typeof runPsi; renderSite: typeof renderSite }
+export interface AuditDeps { fetchHomepage: typeof fetchHomepage; runPsi: typeof runPsi; renderSite: typeof renderSite; rescue?: typeof rescueDeadSite }
 
 const b = (v: boolean | null | undefined): number | null => (v === null || v === undefined ? null : v ? 1 : 0);
 /** DNS failures are definitive. Everything else deserves a second look in a real browser. */
@@ -26,6 +30,8 @@ function emptyAudit(lead: LeadRow, status: WebsiteStatus, runId?: number): Audit
     builder: null, free_tier_host: null, copyright_year: null, phone_on_page: null, phone_matches_listing: null, has_local_schema: null, ltd_hint: null,
     lh_perf: null, lh_seo: null, lh_a11y: null, lh_bp: null, lh_error: null, lh_json_path: null, screenshot_mobile: null, screenshot_desktop: null, error: null,
     listing_link_broken: null, rendered_rescue: null, site_description: null,
+    emails_json: null, socials_json: null, contact_checked_at: null,
+    domain_status: null, domain_expires_at: null, wayback_url: null, wayback_at: null, rescued_at: null,
   };
 }
 
@@ -119,7 +125,11 @@ export async function auditLead(lead: LeadRow, opts: AuditOpts, deps: AuditDeps 
     audit.error = null;
   }
   audit.website_status = status;
+  audit.contact_checked_at = isoNow();
   if (rendered?.error && status !== 'live') audit.error = audit.error ? `${audit.error}; ${rendered.error}` : rendered.error;
+
+  // A dead site: is the domain still theirs, and is there an archived copy to build and pitch from? Cheap, cached.
+  if (isDead(status)) await (deps.rescue ?? rescueDeadSite)(lead, audit);
 
   if (status === 'live') {
     const staticChecks = f.body && f.httpStatus && f.httpStatus < 400 ? runHtmlChecks(f.body, f.headers, audit.final_domain, lead.phone_e164, scoring) : null;
@@ -133,6 +143,18 @@ export async function auditLead(lead: LeadRow, opts: AuditOpts, deps: AuditDeps 
       audit.has_local_schema = b(h.hasLocalSchema); audit.ltd_hint = b(h.ltdHint);
       audit.site_description = h.description;
     }
+
+    // Contact details they publish: homepage (static and rendered) plus its contact and about pages, or the usual paths.
+    const base = audit.final_url ?? cls.url;
+    const pages: (Contacts | null)[] = [f.body ? extractContacts(f.body, base) : null, rendered?.html ? extractContacts(rendered.html, base) : null];
+    const linked = contactLinks(rendered?.html || f.body || '', base, 3);
+    const tries = linked.length ? linked : COMMON_CONTACT_PATHS.map((p) => { try { return new URL(p, base).toString(); } catch { return null; } }).filter((x): x is string => !!x);
+    for (const link of tries) {
+      try { const p = await deps.fetchHomepage(link); if (p.body && (p.httpStatus ?? 500) < 400) pages.push(extractContacts(p.body, link)); } catch { /* skip */ }
+    }
+    const c = mergeContacts(...pages);
+    audit.emails_json = JSON.stringify(c.emails);
+    audit.socials_json = JSON.stringify(c.socials);
 
     if (opts.psi !== false && audit.final_url) {
       const reuse = audit.final_domain ? recentAuditForDomain(audit.final_domain, scoring.thresholds.audit_fresh_days) : undefined;
@@ -186,6 +208,31 @@ export async function auditMany(opts: AuditOpts): Promise<{ audited: number; err
   return out;
 }
 
+/**
+ * The domain check and archived copy for every down or broken site: the ones never looked up, or looked up more than
+ * a week ago (`force`: all of them). Runs inside every audit too; this is for leads audited before it existed.
+ */
+export async function rescueMany(opts: { query?: string; force?: boolean } = {}): Promise<{ checked: number; available: number; expiring: number; archived: number }> {
+  const { getAudit, listLeads } = await import('../db/queries.js');
+  const out = { checked: 0, available: 0, expiring: 0, archived: 0 };
+  const cutoff = Date.now() - 7 * 86_400_000;
+  for (const lead of listLeads({ query: opts.query })) {
+    const a = getAudit(lead.id);
+    if (!a || !isDead(a.website_status)) continue;
+    if (!opts.force && a.rescued_at && Date.parse(a.rescued_at) > cutoff) continue;
+    await rescueDeadSite(lead, a);
+    saveAudit(a);
+    out.checked++;
+    await new Promise((r) => setTimeout(r, 3000));   // the archive rate-limits bursts
+    if (a.domain_status === 'available') out.available++;
+    if (a.domain_status === 'expiring') out.expiring++;
+    if (a.wayback_url) out.archived++;
+    log.info(`rescue ${lead.slug}: domain ${a.domain_status}${a.domain_expires_at ? ` (expires ${a.domain_expires_at.slice(0, 10)})` : ''}${a.wayback_url ? `, archived copy from ${a.wayback_at?.slice(0, 10)}` : ', no archived copy'}`);
+  }
+  log.info(`rescue: ${out.checked} dead sites checked, ${out.available} domains free to register, ${out.expiring} lapsing, ${out.archived} with an archived copy`);
+  return out;
+}
+
 /** Backfill website descriptions for live sites audited before descriptions existed. One fast fetch per site, no browser, no Lighthouse. */
 export async function backfillDescriptions(opts: { query?: string; force?: boolean } = {}): Promise<{ checked: number; found: number }> {
   const { getAudit, listLeads, setSiteDescription } = await import('../db/queries.js');
@@ -210,4 +257,59 @@ export async function backfillDescriptions(opts: { query?: string; force?: boole
   })));
   log.info(`describe: ${out.found} of ${out.checked} live sites had a usable description`);
   return out;
+}
+
+/**
+ * Fill in contact details for a lead already audited, without re-running the audit, Lighthouse or
+ * screenshots: fetch their site's homepage and contact pages and store what they publish.
+ */
+/**
+ * Read a business's own website for emails and social links: the homepage, its contact and about pages (or the usual
+ * paths when it links none), and the page as a browser builds it when the plain fetch finds no email. The site is the
+ * one on their Google listing, or the one found by name when the listing links none.
+ */
+export async function refreshContacts(lead: LeadRow, audit: AuditRow | undefined, deps: { fetchHomepage: typeof fetchHomepage; renderHtml: typeof renderHtml } = { fetchHomepage, renderHtml }): Promise<Contacts> {
+  const scoring = loadScoring();
+  const cls = classifyUrl(lead.website_url, scoring);
+  const listed = audit && ['live', 'broken'].includes(audit.website_status) ? audit.final_url ?? (cls.status === 'fetch' ? cls.url : null) : null;
+  const url = listed ?? lead.found_site_url ?? null;
+  let c: Contacts = { emails: [], socials: [] };
+  if (url) {
+    try {
+      const f = await deps.fetchHomepage(url);
+      if (f.body && (f.httpStatus ?? 500) < 400) {
+        const base = f.finalUrl ?? url;
+        const pages: Contacts[] = [extractContacts(f.body, base)];
+        const linked = contactLinks(f.body, base, 3);
+        const tries = linked.length ? linked : COMMON_CONTACT_PATHS.map((p) => { try { return new URL(p, base).toString(); } catch { return null; } }).filter((x): x is string => !!x);
+        for (const link of tries) {
+          try { const p = await deps.fetchHomepage(link); if (p.body && (p.httpStatus ?? 500) < 400) pages.push(extractContacts(p.body, p.finalUrl ?? link)); } catch { /* skip */ }
+        }
+        c = mergeContacts(...pages);
+        if (!c.emails.length) {
+          // Content built by JavaScript (Wix, Squarespace): read the homepage and first contact page as a browser sees them.
+          for (const link of [base, ...(linked.length ? linked.slice(0, 1) : [])]) {
+            const r = await deps.renderHtml(link);
+            if (r.html) c = mergeContacts(c, extractContacts(r.html, r.finalUrl ?? link));
+            if (c.emails.length) break;
+          }
+        }
+      }
+    } catch { /* unreachable site: no contacts */ }
+  }
+  if (audit) openDb().prepare('UPDATE audits SET emails_json = ?, socials_json = ?, contact_checked_at = ? WHERE lead_id = ?').run(JSON.stringify(c.emails), JSON.stringify(c.socials), isoNow(), lead.id);
+  return c;
+}
+
+/** For leads whose listing links no site of their own: look for one by name, then read whatever site they have for contacts. */
+export async function findContacts(full: { lead: LeadRow; audit?: AuditRow | null }, opts: { searchSite?: boolean } = {}): Promise<{ contacts: Contacts; foundSite: string | null }> {
+  let lead = full.lead;
+  const status = full.audit?.website_status ?? 'none';
+  let foundSite: string | null = null;
+  if (opts.searchSite !== false && !['live', 'broken'].includes(status) && !lead.found_site_url) {
+    const site = await findOwnSite(lead);
+    openDb().prepare('UPDATE leads SET found_site_url = ?, site_search_at = ? WHERE id = ?').run(site?.url ?? null, isoNow(), lead.id);
+    if (site) { foundSite = site.url; lead = { ...lead, found_site_url: site.url }; log.info(`found own site for ${lead.name}: ${site.url} (matched ${site.matchedBy})`); }
+  }
+  return { contacts: await refreshContacts(lead, full.audit ?? undefined), foundSite };
 }

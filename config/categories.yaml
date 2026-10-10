@@ -1,51 +1,71 @@
 # Category definitions. `keywords` are matched against the query's category words.
 # pays_for_marketing: verticals that routinely spend on leads and will pay for a site.
+# trade_value: 0-100, how much a website is worth to this trade: what one job is worth, whether customers find them
+# on Google (not an app or Instagram), and whether they already have sites. Gates and grades leads (config/pick.yaml).
 # walk_in: prefer a walk-in pitch. dm: Instagram/Facebook DM is a good secondary channel.
 # must_haves: what the new site needs, used in the pitch pack notes.
+# query: what the automatic sweep searches for. areas: the area group in config/areas.yaml it is searched across
+# (default: high_streets for walk_in, trades for everything else).
 categories:
   - key: plumber
+    trade_value: 85
+    query: plumbers
     search_terms: [heating engineer, boiler repair, gas engineer]
     keywords: [plumber, plumbers, plumbing, heating engineer, gas engineer, boiler]
     pays_for_marketing: true
     sic: ["43220"]
     must_haves: [emergency call-out banner, Gas Safe number if applicable, service areas, boiler and bathroom service pages]
   - key: electrician
+    trade_value: 85
+    query: electricians
     search_terms: [electrical contractor, EV charger installer]
     keywords: [electrician, electricians, electrical]
     pays_for_marketing: true
     sic: ["43210"]
     must_haves: [NICEIC or NAPIT badge if applicable, EICR and rewire service pages, emergency call-out, service areas]
   - key: roofer
+    trade_value: 95
+    query: roofers
     search_terms: [roof repair, flat roofing]
     keywords: [roofer, roofers, roofing]
     pays_for_marketing: true
     sic: ["43910"]
     must_haves: [emergency repairs, flat and pitched roof pages, before and after gallery, service areas]
   - key: builder
+    trade_value: 90
+    query: builders
     search_terms: [extension builder, loft conversion]
     keywords: [builder, builders, building contractor, extensions, loft conversion]
     pays_for_marketing: true
     sic: ["41202", "43390"]
     must_haves: [project gallery, extensions and conversions pages, quote form, accreditations]
   - key: landscaper
+    trade_value: 90
+    query: landscape gardener
     search_terms: [garden design, fencing contractor, driveway paving]
-    keywords: [landscaper, landscapers, landscaping, landscape gardener, gardener, gardening, fencing, paving]
+    keywords: [landscaper, landscapers, landscaping, landscape gardener, gardener, gardening, fencing, paving, driveway, driveways, block paving]
     pays_for_marketing: true
     sic: ["81300"]
     must_haves: [before and after gallery, patios and fencing pages, seasonal services, quote form]
   - key: cleaner
+    trade_value: 55
+    query: cleaning company
     search_terms: [domestic cleaner, end of tenancy cleaning]
     keywords: [cleaner, cleaners, cleaning, end of tenancy, carpet cleaning]
     pays_for_marketing: true
     sic: ["81210", "81220", "81299"]
     must_haves: [domestic and commercial pages, end of tenancy page, instant quote form, insurance and DBS mention]
   - key: garage
+    trade_value: 75
+    query: garages
     search_terms: [MOT centre, car servicing]
-    keywords: [garage, garages, mot, mechanic, mechanics, car repair, tyres]
+    keywords: [garage, garages, mot, mechanic, mechanics, mobile mechanic, car repair, tyres, car detailing, detailing, valeting, car valeting]
     pays_for_marketing: true
     sic: ["45200"]
     must_haves: [MOT booking, services list with prices from, opening hours, map, reviews]
   - key: barber
+    trade_value: 30
+    query: barbers
     search_terms: [mens hairdresser]
     keywords: [barber, barbers, barbershop]
     pays_for_marketing: false
@@ -54,6 +74,8 @@ categories:
     sic: ["96020"]
     must_haves: [price list, booking link, Instagram feed, opening hours, map]
   - key: beauty
+    trade_value: 60
+    query: beauty salon
     search_terms: [nail salon, lash technician, hair salon]
     keywords: [beauty, beauty salon, nails, nail salon, lashes, brows, aesthetics, hairdresser, hairdressers, hair salon]
     pays_for_marketing: true
@@ -62,6 +84,8 @@ categories:
     sic: ["96020"]
     must_haves: [treatment menu with prices, booking link, Instagram feed, gallery, opening hours]
   - key: cafe
+    trade_value: 40
+    query: cafes
     search_terms: [coffee shop, brunch cafe]
     keywords: [cafe, cafes, coffee shop, coffee]
     pays_for_marketing: false
@@ -70,6 +94,8 @@ categories:
     sic: ["56102"]
     must_haves: [menu, opening hours, map, Instagram feed, photos]
   - key: takeaway
+    trade_value: 20
+    query: takeaways
     search_terms: [pizza takeaway, chinese takeaway]
     keywords: [takeaway, takeaways, fast food, pizza, kebab, chinese, indian, fish and chips]
     pays_for_marketing: false
@@ -78,6 +104,8 @@ categories:
     sic: ["56103"]
     must_haves: [menu, order link, opening hours, delivery area, map]
   - key: restaurant
+    trade_value: 45
+    query: restaurants
     keywords: [restaurant, restaurants]
     pays_for_marketing: true
     walk_in: true
@@ -85,41 +113,58 @@ categories:
     sic: ["56101"]
     must_haves: [menu, booking link, opening hours, gallery, map]
   - key: dentist
+    trade_value: 50
+    query: dentist
+    areas: affluent
     search_terms: [cosmetic dentist]
     keywords: [dentist, dentists, dental]
     pays_for_marketing: true
     sic: ["86230"]
     must_haves: [treatments with prices from, new patient page, team page, booking form, GDC and CQC mention]
   - key: accountant
+    trade_value: 45
+    query: accountant
+    areas: affluent
     keywords: [accountant, accountants, accounting, bookkeeper, bookkeeping]
     pays_for_marketing: true
     sic: ["69201", "69202"]
     must_haves: [services for sole traders and limited companies, pricing packages, contact form, credentials]
   - key: physio
+    trade_value: 65
+    query: physiotherapist
+    areas: affluent
     search_terms: [sports massage]
     keywords: [physio, physiotherapist, physiotherapy, osteopath, chiropractor, sports massage]
     pays_for_marketing: true
     sic: ["86900"]
     must_haves: [conditions treated, booking link, practitioner bios, prices, registration bodies]
   - key: removals
+    trade_value: 85
+    query: removals
     search_terms: [man and van]
     keywords: [removals, removal company, man and van, movers]
     pays_for_marketing: true
     sic: ["49420"]
     must_haves: [instant quote form, services list, areas covered, insurance mention, reviews]
   - key: locksmith
+    trade_value: 75
+    query: locksmiths
     keywords: [locksmith, locksmiths]
     pays_for_marketing: true
     sic: ["80200", "95290"]
     must_haves: [emergency call-out banner, response time, areas covered, pricing from]
   - key: pet
-    keywords: [dog groomer, dog grooming, pet groomer, dog walker, dog walking, pet sitting]
+    trade_value: 65
+    query: dog groomer
+    keywords: [dog groomer, dog groomers, dog grooming, pet groomer, pet groomers, dog walker, dog walking, pet sitting]
     pays_for_marketing: true
     walk_in: false
     dm: true
     sic: ["96090"]
     must_haves: [price list, booking form, gallery, areas covered]
   - key: personal_trainer
+    trade_value: 55
+    query: personal trainers
     search_terms: [personal trainer, PT studio, strength coach]
     keywords: [personal trainer, personal trainers, personal training, gym trainer, gym trainers, fitness coach, fitness coaches, fitness trainer, fitness, gym, gyms, strength and conditioning, bootcamp, boot camp, pilates, yoga]
     pays_for_marketing: true
@@ -127,51 +172,71 @@ categories:
     sic: ["93130", "85510"]
     must_haves: [Instagram feed, transformation gallery, packages with prices from, booking or enquiry form, testimonials, qualifications and insurance]
   - key: life_coach
+    trade_value: 50
+    query: life coach
     keywords: [life coach, life coaches, business coach, business coaches, career coach, executive coach, coaching, adhd coach, mindset coach, wellbeing coach, hypnotherapist, hypnotherapy]
     pays_for_marketing: true
     dm: true
     sic: ["85590", "70229"]
     must_haves: [who it is for and the outcomes, packages with prices from, discovery call booking link, testimonials, credentials]
   - key: coach_hire
+    trade_value: 65
+    query: coach hire
     keywords: [coach hire, coaches, minibus hire, minibus, coach company, coach travel, executive travel, minibus and coach]
     pays_for_marketing: true
     sic: ["49390"]
     must_haves: [instant quote form, fleet with seat counts, airport and event pages, areas covered, operator licence and insurance mention]
   - key: estate_agent
+    trade_value: 40
+    query: estate agent
+    areas: affluent
     search_terms: [letting agent]
     keywords: [estate agent, estate agents, letting agent, letting agents, lettings, property management, estate agency, real estate]
     pays_for_marketing: true
     sic: ["68310", "68320"]
     must_haves: [property search or live listings feed, free valuation form, landlord services page, fees page, reviews, Propertymark or TPO membership]
   - key: solicitor
+    trade_value: 45
+    query: solicitors
+    areas: affluent
     keywords: [solicitor, solicitors, law firm, lawyer, lawyers, conveyancing, immigration lawyer, family law]
     pays_for_marketing: true
     sic: ["69102"]
     must_haves: [practice area pages, fixed fees where possible, SRA number, team page, enquiry form, reviews]
   - key: driving_school
+    trade_value: 55
+    query: driving school
     keywords: [driving school, driving schools, driving instructor, driving instructors, driving lessons]
     pays_for_marketing: true
     dm: true
     sic: ["85530"]
     must_haves: [lesson prices and packages, areas covered, pass rate or passes gallery, booking form, manual and automatic]
   - key: decorator
+    trade_value: 75
+    query: painter and decorator
     search_terms: [plasterer]
     keywords: [painter, painters, decorator, decorators, painter and decorator, painters and decorators, plasterer, plasterers, plastering]
     pays_for_marketing: true
     sic: ["43341", "43310"]
     must_haves: [before and after gallery, interior and exterior pages, free quote form, areas covered]
   - key: fitter
+    trade_value: 90
+    query: kitchen fitters
     search_terms: [kitchen fitter, bathroom fitter, handyman]
     keywords: [kitchen fitter, kitchen fitters, bathroom fitter, bathroom fitters, carpet fitter, carpet fitters, flooring, tiler, tilers, joiner, joiners, carpenter, carpenters, handyman, handymen]
     pays_for_marketing: true
     sic: ["43320", "43330"]
     must_haves: [project gallery, service pages, free quote form, areas covered, reviews]
   - key: window_cleaner
+    trade_value: 45
+    query: window cleaner
     keywords: [window cleaner, window cleaners, window cleaning, gutter cleaning, pressure washing, driveway cleaning]
     pays_for_marketing: true
     sic: ["81221"]
     must_haves: [instant quote form, areas and rounds covered, services list, insurance mention]
   - key: florist
+    trade_value: 55
+    query: florists
     keywords: [florist, florists, flower shop, flowers]
     pays_for_marketing: true
     walk_in: true
@@ -179,6 +244,8 @@ categories:
     sic: ["47760"]
     must_haves: [shop with delivery, wedding and funeral pages, same-day delivery area, Instagram feed]
   - key: tattoo
+    trade_value: 50
+    query: tattoo studio
     keywords: [tattoo, tattoos, tattoo studio, tattoo parlour, tattooist, piercing, piercings]
     pays_for_marketing: true
     walk_in: true
@@ -186,22 +253,31 @@ categories:
     sic: ["96090"]
     must_haves: [artist portfolios, booking and deposit form, aftercare page, Instagram feed, opening hours]
   - key: photographer
+    trade_value: 60
+    query: photographer
     keywords: [photographer, photographers, photography, videographer, wedding photographer]
     pays_for_marketing: true
     dm: true
     sic: ["74201", "74202"]
     must_haves: [portfolio gallery, packages with prices from, enquiry form with date, reviews]
   - key: tutor
+    trade_value: 55
+    query: tutors
     keywords: [tutor, tutors, tutoring, tuition, tuition centre, music lessons, music teacher]
     pays_for_marketing: true
     sic: ["85590"]
     must_haves: [subjects and levels, prices, results or testimonials, DBS mention, enquiry form]
   - key: childcare
+    trade_value: 55
+    query: nursery
     keywords: [nursery, nurseries, childminder, childminders, day nursery, childcare]
     pays_for_marketing: true
     sic: ["88910"]
     must_haves: [Ofsted rating and report link, fees and funded hours, room and day routine pages, visit booking form]
   - key: vet
+    trade_value: 45
+    query: vets
+    areas: affluent
     keywords: [vet, vets, veterinary, veterinary practice]
     pays_for_marketing: true
     sic: ["75000"]

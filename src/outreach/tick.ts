@@ -7,10 +7,12 @@ import { log } from '../util/log.js';
 import { loadOutreach, sendsForReal } from './config.js';
 import { capState, doFollowUp, dueFollowUps, sendProblems } from './index.js';
 import { checkReplies } from './replies.js';
+import { opensConfigured, refreshOpens } from './opens.js';
 import { inWindow } from './rules.js';
 
 const GAP_MS = 5 * 60_000; // space automatic sends out; a burst looks like a bulk sender
 let lastReplies = 0;
+let lastOpens = 0;
 let lastAutoSend = 0;
 let busy = false;
 
@@ -19,6 +21,12 @@ export async function outreachTick(now = new Date()) {
   busy = true;
   try {
     const cfg = loadOutreach();
+    // Preview opens, on the same cadence as replies: cheap, and "opened but no reply" is worth knowing the same day.
+    if (opensConfigured() && now.getTime() - lastOpens >= cfg.replies.every_minutes * 60_000) {
+      lastOpens = now.getTime();
+      const o = await refreshOpens();
+      if (o.errors.length) log.warn(`outreach: opens ${o.errors[0]}`);
+    }
     if (cfg.replies.check && now.getTime() - lastReplies >= cfg.replies.every_minutes * 60_000) {
       lastReplies = now.getTime();
       const r = await checkReplies();

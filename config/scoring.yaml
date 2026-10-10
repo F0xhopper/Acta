@@ -3,7 +3,10 @@ thresholds:
   min_viability: 40
   tier_min_viability: 50
   tier_a_min_reviews: 10          # tier A and B need an established business, not a five-review account
-  adequate_site_opportunity: 35   # live sites scoring below this are excluded as adequate
+  adequate_site_opportunity: 35   # live sites scoring below this are excluded as adequate, unless they show their age
+                                  # (cheap builder, free-tier address, no viewport, no HTTPS, slow, old copyright): those
+                                  # owners have paid for a site before, so they stay in as tier C for the buyer lane
+  weak_site_perf_under: 40        # Lighthouse mobile performance under this counts as "shows its age" on its own
   audit_fresh_days: 14
   cache_days: 7
 
@@ -49,13 +52,16 @@ viability:
   exclude_rating_min_reviews: 50  # ... across at least this many reviews
   no_phone_cap: 60
   recent_review_months: 12       # newest of Google's top reviews within this many months: active business
-  recent_reviews: 10
-  stale_review_months: 24        # nothing newer than this: may be winding down
+  recent_reviews: 10             # also given when the review count has risen since the listing was first seen
+  stale_review_months: 24        # nothing newer than this: may be winding down ...
   stale_reviews: -15
+  recency_trusted_under: 30      # ... but only judged under this many reviews: Google shows the five most relevant
+                                 # reviews, not the newest, so a busy business can look dormant
 
-total:
-  opportunity_weight: 0.5
-  viability_weight: 0.5
+total:                            # the score: how much a site would help, how likely they are to pay, how much there is to build from
+  opportunity_weight: 0.4
+  viability_weight: 0.4
+  content_weight: 0.2             # photos, logo, about, services, reviews, hours, contact, socials (src/score/content.ts)
 
 hosts:
   social: [facebook.com, fb.com, fb.me, instagram.com, linktr.ee, linktree.com, tiktok.com, x.com, twitter.com, wa.me, whatsapp.com, nextdoor.co.uk, nextdoor.com, youtube.com, snapchat.com]

@@ -1,3 +1,6 @@
+import { reachOf } from './reach.js';
+import { contentOf } from './content.js';
+import { weakSiteSignals, weakSiteSummary } from './weak-site.js';
 import { findCategory, loadScoring, type Category, type Scoring } from '../config.js';
 import { fullLeads, isSuppressed, saveScore } from '../db/queries.js';
 import type { Channel, FullLead, ScoreRow, Tier } from '../db/types.js';
@@ -7,11 +10,14 @@ import { excludedType, isChainName } from '../util/business.js';
 
 const clamp = (n: number, lo = 0, hi = 100) => Math.max(lo, Math.min(hi, Math.round(n)));
 
+/** The first-contact channel. Email only when there's an address to send to and cold email is allowed. */
 export function pickChannel(full: FullLead, category: Category | undefined): Channel {
-  if (full.ch?.match_confidence === 'high') return 'email';
-  if (category?.walk_in) return 'walk_in';
-  if (category?.dm && !full.lead.phone_e164) return 'dm';
-  return 'phone';
+  const r = reachOf(full, category);
+  if (r.emailAllowed) return 'email';
+  if (r.walkIn) return 'walk_in';
+  if (full.lead.phone_e164) return 'phone';
+  if (r.socials.length) return 'dm';
+  return 'walk_in';
 }
 
 export function scoreLead(full: FullLead, scoring: Scoring = loadScoring(), category: Category | undefined = findCategory(full.lead.category_key)): ScoreRow {
@@ -40,6 +46,7 @@ export function scoreLead(full: FullLead, scoring: Scoring = loadScoring(), cate
     facebook_only: 'Only a social media page, no real site', platform_only: 'Only a booking or ordering platform page',
   };
   if (statusReason[audit.website_status]) reasons.push(statusReason[audit.website_status]);
+  if (lead.found_site_url && audit.website_status !== 'live') reasons.push(`Has its own site (${lead.found_site_url.replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '')}) that Google doesn't link`);
   if (audit.website_status === 'live') {
     const add = (pts: number, why: string) => { opportunity += pts; reasons.push(why); };
     if (audit.listing_link_broken) add(o.live.listing_link_broken, 'Google listing links to a page that no longer exists');
@@ -60,8 +67,12 @@ export function scoreLead(full: FullLead, scoring: Scoring = loadScoring(), cate
     if (!audit.builder && audit.lh_perf !== null && audit.lh_perf >= 80 && reasons.length === 0) reasons.push('Modern site');
   }
   opportunity = clamp(opportunity);
+  // A live site below the threshold is adequate and excluded, unless it shows its age: that owner has paid for a
+  // site before and is the likeliest to pay again, so it stays in (tier C) for the picker's buyer lane.
+  const weak = weakSiteSignals(audit, scoring);
   if (audit.website_status === 'live' && opportunity < scoring.thresholds.adequate_site_opportunity) {
-    return { ...exclude('Site is adequate'), opportunity, channel: pickChannel(full, category) };
+    if (!weak.length) return { ...exclude('Site is adequate'), opportunity, channel: pickChannel(full, category) };
+    reasons.push(`Already pays for a site, and it shows its age: ${weakSiteSummary(weak)}`);
   }
 
   // ---- viability ----
@@ -78,19 +89,29 @@ export function scoreLead(full: FullLead, scoring: Scoring = loadScoring(), cate
   if (rc > 0 && lead.rating !== null) reasons.push(`${rc} reviews at ${lead.rating}`);
   else reasons.push('No reviews yet');
   if (lead.opening_hours_json) viability += v.hours_listed;
-  if (lead.last_review_at) {
+  // Activity. Reviews gained between sightings is the unbiased sign; the dates of Google's five shown reviews (the
+  // most relevant, not the newest) only count for businesses with few reviews, where the five are nearly all of them.
+  const gained = full.velocity?.gained ?? 0;
+  const trustDates = rc < v.recency_trusted_under;
+  if (gained > 0) {
+    viability += v.recent_reviews;
+    reasons.push(`Active, ${gained} new review${gained === 1 ? '' : 's'} since ${new Date(full.velocity!.firstAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}`);
+  } else if (lead.last_review_at) {
     const months = (Date.now() - new Date(lead.last_review_at).getTime()) / (30.44 * 86_400_000);
     const when = new Date(lead.last_review_at).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' });
     if (months <= v.recent_review_months) { viability += v.recent_reviews; reasons.push(`Active, latest review ${when}`); }
-    else if (months >= v.stale_review_months) { viability += v.stale_reviews; reasons.push(`No recent reviews since ${when}, may be winding down`); }
+    else if (months >= v.stale_review_months && trustDates) { viability += v.stale_reviews; reasons.push(`No recent reviews since ${when}, may be winding down`); }
   }
   if (category?.pays_for_marketing) viability += v.pays_for_marketing;
-  if (ch?.match_confidence === 'high') { viability += v.ltd_high; reasons.push('Limited company, cold email allowed'); }
+  const reach = reachOf(full, category);
+  if (ch?.match_confidence === 'high') { viability += v.ltd_high; reasons.push(reach.email ? `Limited company with an email (${reach.email}): cold email allowed` : 'Limited company, but no email found: call or walk in first'); }
   else reasons.push('Entity unknown, treat as sole trader (no cold email)');
   if (!lead.phone_e164) { viability = Math.min(viability, v.no_phone_cap); reasons.push('No phone number listed'); }
   viability = clamp(viability);
 
-  const total = clamp(scoring.total.opportunity_weight * opportunity + scoring.total.viability_weight * viability);
+  const content = contentOf(full, category);
+  reasons.push(`${content.label} (content ${content.score})`);
+  const total = clamp(scoring.total.opportunity_weight * opportunity + scoring.total.viability_weight * viability + scoring.total.content_weight * content.score);
   const tmin = scoring.thresholds.tier_min_viability;
   let t: Tier = 'C';
   const established = rc >= scoring.thresholds.tier_a_min_reviews;
@@ -100,7 +121,7 @@ export function scoreLead(full: FullLead, scoring: Scoring = loadScoring(), cate
 
   return {
     lead_id: lead.id, scored_at: isoNow(), opportunity, viability, total, tier: t, channel: pickChannel(full, category),
-    reasons_json: JSON.stringify(reasons.slice(0, 6)), excluded_reason: t === 'X' ? `Viability ${viability} below floor` : null,
+    reasons_json: JSON.stringify([...reasons.slice(0, 6), ...(reasons.length > 6 ? [reasons[reasons.length - 1]] : [])]), excluded_reason: t === 'X' ? `Viability ${viability} below floor` : null,
   };
 }
 

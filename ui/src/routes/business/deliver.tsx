@@ -16,7 +16,7 @@ import { cn } from '../../lib/cn';
 import { CHANNEL_LABEL, clock, money, waNumber } from '../../lib/format';
 import { useBusiness } from './context';
 import { useAutosave, useCopy } from './deliver-copy';
-import { FollowUpPanel, MessageHistory, SendEmailButton, SendingLine } from './deliver-outreach';
+import { FollowUpPanel, MessageHistory, PreviewOpensLine, SendEmailButton, SendingLine } from './deliver-outreach';
 
 type Tab = 'email' | 'whatsapp' | 'script' | 'package';
 const CHANNELS = ['email', 'phone', 'walk_in', 'whatsapp', 'dm'] as const;
@@ -99,7 +99,7 @@ function EmailPane({ d, blocked }: { d: Delivery; blocked: boolean }) {
   if (!d.emailAllowed) {
     return (
       <Empty icon={Lock}>
-        Email is locked for this business. It looks like a sole trader, and UK rules (PECR) don't allow cold email to individuals. Use the phone script, a walk-in or WhatsApp after first contact.
+        Email is off for this business. {d.complianceNote}
       </Empty>
     );
   }
@@ -107,7 +107,7 @@ function EmailPane({ d, blocked }: { d: Delivery; blocked: boolean }) {
     <div className="flex flex-col gap-3">
       <div className="grid gap-1.5">
         <label className="label" htmlFor="d-to">To</label>
-        <input id="d-to" className="field" value={d.to ?? ''} readOnly placeholder="No email address found for this business" />
+        {d.to ? <input id="d-to" className="field" value={d.to} readOnly /> : <p id="d-to" className="text-sm text-fg-3">No email address yet. Add one on the Overview tab if you find it.</p>}
       </div>
       <div className="grid gap-1.5">
         <label className="label" htmlFor="d-subject">Subject</label>
@@ -260,6 +260,7 @@ function SendPanel({ d, blocked }: { d: Delivery; blocked: boolean }) {
           <p className="flex items-center gap-2 text-sm text-fg-2"><Check className="size-4 text-ok" aria-hidden />Sent</p>
           <p className="num-display text-[26px]">{clock(d.sentAt)}</p>
           <p className="text-sm text-fg-3">By {CHANNEL_LABEL[d.sentChannel ?? ''] ?? d.sentChannel ?? 'an unknown channel'}.</p>
+          <PreviewOpensLine slug={d.slug} />
           <Button variant="outline" loading={unsend.isPending} onClick={undo}>Undo</Button>
         </>
       ) : (

@@ -1,39 +1,86 @@
-# Area groups for sweeps: pnpm pipeline run "plumbers" --areas trades
-# Each area becomes its own query ("plumbers in Erdington", ...), which gets round Google's 60-result cap
-# and returns local owner-operators instead of the biggest firms in the city.
-groups:
-  high_streets:   # walk-in verticals: barbers, salons, cafes, takeaways, florists, tattoo
-    - Kings Heath
-    - Moseley
-    - Stirchley
-    - Harborne
-    - Bearwood
-    - Erdington
-    - Boldmere
-    - Selly Oak
-    - Sparkhill
-    - Small Heath
-    - Handsworth
-    - Alum Rock
-  trades:         # plumbers, electricians, roofers, builders, landscapers, decorators, fitters
-    - Erdington
-    - Kingstanding
-    - Great Barr
-    - Castle Bromwich
-    - Sheldon
-    - Yardley
-    - Acocks Green
-    - Hall Green
-    - Northfield
-    - Kings Norton
-    - Quinton
-    - Sutton Coldfield
-  affluent:       # dentists, accountants, solicitors, physios, estate agents, clinics
-    - Edgbaston
-    - Harborne
-    - Moseley
-    - Sutton Coldfield
-    - Solihull
-    - Shirley
-    - Jewellery Quarter
-    - Hall Green
+# Markets: the towns and cities Acta searches. Each market has a centre (to bias Google towards it), the
+# postcode areas that count as inside it, and its neighbourhoods in groups.
+#
+# Groups say which kind of business each neighbourhood suits. A category's `areas` in config/categories.yaml
+# names the group (walk-in trades default to high_streets, everything else to trades):
+#   high_streets: shops people walk into: barbers, salons, cafes, takeaways, florists, tattoo
+#   trades:       residential suburbs for plumbers, electricians, roofers, builders, cleaners, fitters
+#   affluent:     dentists, accountants, solicitors, physios, estate agents, vets
+#
+# Each area becomes its own query ("plumbers in Erdington"), which gets round Google's 60-result cap and returns
+# local owner-operators instead of the biggest firms in the city.
+#
+# `active: true` puts a market in the automatic sweep. To go somewhere new, copy a block, list its
+# neighbourhoods and switch it on. A group name like "trades" means that group in every active market.
+markets:
+  birmingham:
+    name: Birmingham
+    centre: [52.4862, -1.8904]
+    radius_km: 15
+    postcodes: [B]
+    active: true
+    groups:
+      high_streets:
+        - Kings Heath
+        - Moseley
+        - Stirchley
+        - Harborne
+        - Bearwood
+        - Erdington
+        - Boldmere
+        - Selly Oak
+        - Sparkhill
+        - Small Heath
+        - Handsworth
+        - Alum Rock
+      trades:
+        - Erdington
+        - Kingstanding
+        - Great Barr
+        - Castle Bromwich
+        - Sheldon
+        - Yardley
+        - Acocks Green
+        - Hall Green
+        - Northfield
+        - Kings Norton
+        - Quinton
+        - Sutton Coldfield
+        # Tradespeople listed in the affluent suburbs do bigger jobs: hand searches of Solihull, Knowle and Sutton
+        # produced most of the first passers
+        - Solihull
+        - Knowle
+        - Dorridge
+        - Shirley
+        - Harborne
+      affluent:
+        - Edgbaston
+        - Harborne
+        - Moseley
+        - Sutton Coldfield
+        - Solihull
+        - Shirley
+        - Jewellery Quarter
+        - Hall Green
+
+  # Examples, off until you switch them on. Check the neighbourhood lists before you do.
+  coventry:
+    name: Coventry
+    centre: [52.4068, -1.5197]
+    radius_km: 10
+    postcodes: [CV]
+    active: false
+    groups:
+      high_streets: [Earlsdon, Foleshill, Far Gosford Street, Coundon, Radford]
+      trades: [Tile Hill, Wyken, Binley, Allesley, Cheylesmore, Canley, Stoke Aldermoor]
+      affluent: [Earlsdon, Kenilworth, Cheylesmore, Allesley]
+  wolverhampton:
+    name: Wolverhampton
+    centre: [52.5862, -2.1288]
+    radius_km: 10
+    postcodes: [WV]
+    active: false
+    groups:
+      high_streets: [Tettenhall, Penn, Whitmore Reans, Bilston, Wednesfield]
+      trades: [Bushbury, Fallings Park, Wednesfield, Bilston, Penn, Compton, Pendeford]
+      affluent: [Tettenhall, Compton, Penn, Codsall]

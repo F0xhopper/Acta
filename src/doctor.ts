@@ -2,8 +2,10 @@ import { existsSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { DATA_DIR, ROOT } from './config.js';
 import { run } from './build/exec.js';
+import { SITE_TOPIC } from './build/repo.js';
 import { openDb } from './db/index.js';
 import { deployAvailable } from './build/deploy.js';
+import { loadAutomation } from './loop/automation.js';
 
 export interface Check { name: string; ok: boolean; detail: string; required: boolean }
 
@@ -18,6 +20,13 @@ export async function doctor(): Promise<Check[]> {
   try { openDb(); add('Database', true, join(DATA_DIR, 'leads.db')); } catch (e) { add('Database', false, (e as Error).message); }
   const gh = await run('gh', ['auth', 'status'], { cwd: ROOT });
   add('GitHub CLI logged in', gh.code === 0, gh.code === 0 ? 'ok' : 'run: gh auth login');
+  if (gh.code === 0) {
+    // Every site repo is private: a client's brand and photos must never sit on a public page before they have said yes.
+    const owner = process.env.GITHUB_OWNER ?? 'F0xhopper';
+    const repos = await run('gh', ['repo', 'list', owner, '--topic', SITE_TOPIC, '--limit', '200', '--json', 'name,isPrivate', '-q', '.[] | select(.isPrivate|not) | .name'], { cwd: ROOT });
+    const open = repos.stdout.trim().split('\n').filter(Boolean);
+    add('Site repos private', repos.code === 0 && open.length === 0, repos.code !== 0 ? `could not list ${owner}'s repos` : open.length ? `${open.length} public: ${open.join(', ')} (gh repo edit ${owner}/<name> --visibility private --accept-visibility-change-consequences)` : `all ${owner} repos tagged ${SITE_TOPIC} are private`);
+  }
   const claude = await run('which', ['claude'], { cwd: ROOT });
   add('Claude Code CLI', claude.code === 0, claude.code === 0 ? claude.stdout.trim() : 'claude not on PATH');
   const pw = await run('pnpm', ['exec', 'playwright', '--version'], { cwd: ROOT });
@@ -33,8 +42,15 @@ export async function doctor(): Promise<Check[]> {
     add('Preview wildcard DNS', dig.stdout.trim().length > 0, dig.stdout.trim() || `no CNAME for *.${process.env.PREVIEW_DOMAIN}`, false);
   }
   const lc = await run('launchctl', ['list'], { cwd: ROOT });
-  const jobs = ['com.acta.week', 'com.acta.builds', 'com.acta.day'].filter((j) => lc.stdout.includes(j));
-  add('Scheduled jobs', jobs.length === 3, jobs.length ? `loaded: ${jobs.join(', ')}` : 'none loaded: pnpm pipeline schedule install', false);
+  const auto = loadAutomation();
+  const want = auto.autopilot ? ['com.acta.ui'] : ['com.acta.week', 'com.acta.builds', 'com.acta.day'];
+  const jobs = want.filter((j) => lc.stdout.includes(j));
+  add('Scheduled jobs', jobs.length === want.length, jobs.length ? `loaded: ${jobs.join(', ')}` : `none loaded: pnpm pipeline schedule install${auto.autopilot ? ' (the always-on server with the autopilot)' : ''}`, false);
+  if (auto.autopilot) {
+    const built = existsSync(join(ROOT, 'ui', 'dist', 'index.html'));
+    add('UI built', built, built ? 'ui/dist present' : 'pnpm ui:build (the autopilot runs without it, but the pages need it)', false);
+    add('Notifications', true, process.env.ACTA_NOTIFY_URL ? 'macOS and a push (ACTA_NOTIFY_URL)' : 'macOS only; add ACTA_NOTIFY_URL to .env for a push to your phone', false);
+  }
   return checks;
 }
 

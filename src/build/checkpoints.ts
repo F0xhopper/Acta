@@ -11,19 +11,20 @@ import { BrandSchema, FactsSchema, SITE_PATHS } from './contracts.js';
 import { commitAll } from './repo.js';
 import { siteContentSource } from './site-content.js';
 
-export interface Checkpoints { photos: boolean; concept: boolean }
+/** `call`: a call before the build for anyone who can't be cold emailed (off unless switched on; see config/build.yaml). */
+export interface Checkpoints { call: boolean; photos: boolean; concept: boolean }
 
 export function loadCheckpoints(): Checkpoints {
-  if (process.env.ACTA_CHECKPOINTS === 'off') return { photos: false, concept: false };
+  if (process.env.ACTA_CHECKPOINTS === 'off') return { call: false, photos: false, concept: false };
   try {
     const raw = parseYaml(readFileSync(join(ROOT, 'config', 'build.yaml'), 'utf8')) as { checkpoints?: Partial<Checkpoints> };
-    return { photos: raw.checkpoints?.photos !== false, concept: raw.checkpoints?.concept !== false };
-  } catch { return { photos: true, concept: true }; }
+    return { call: raw.checkpoints?.call === true, photos: raw.checkpoints?.photos !== false, concept: raw.checkpoints?.concept !== false };
+  } catch { return { call: false, photos: true, concept: true }; }
 }
 
 /** Thrown by a step to stop the build cleanly in a waiting state. Not a failure. */
 export class Paused extends Error {
-  constructor(public state: 'awaiting_photos' | 'awaiting_concept', message: string) { super(message); }
+  constructor(public state: 'awaiting_call' | 'awaiting_photos' | 'awaiting_concept' | 'awaiting_usage', message: string) { super(message); }
 }
 
 export const PATHS = {
@@ -202,7 +203,7 @@ export async function renderConceptMockups(dir: string, log?: (m: string) => voi
   const browser = await chromium.launch({ headless: true });
   try {
     for (const [device, viewport] of [['mobile', { width: 390, height: 844 }], ['desktop', { width: 1440, height: 900 }]] as const) {
-      const ctx = await browser.newContext({ viewport, deviceScaleFactor: device === 'mobile' ? 2 : 1 });
+      const ctx = await browser.newContext({ viewport, deviceScaleFactor: device === 'mobile' ? 2 : 1, reducedMotion: 'reduce' });
       const page = await ctx.newPage();
       for (const f of files) {
         try {

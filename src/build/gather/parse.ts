@@ -1,5 +1,16 @@
 import * as cheerio from 'cheerio';
+import { archiveOriginal } from '../../audit/rescue.js';
 import type { PageData, PageIcon, PageImage } from './types.js';
+
+/** The Wayback Machine's own toolbar, scripts and styles, which must never read as part of the business's site. */
+const WAYBACK_CHROME = '#wm-ipp-base, #wm-ipp, #wm-ipp-print, #donato, #wm-ipp-inner, script[src*="/_static/"], link[href*="/_static/"], script[src*="archive.org/_static"], style[id^="wm-"]';
+export const isArchiveUrl = (url: string) => /^https?:\/\/web\.archive\.org\//i.test(url);
+
+/** Remove the archive's toolbar and injected scripts from a page loaded from web.archive.org. */
+export function stripWaybackChrome($: cheerio.CheerioAPI): void {
+  $(WAYBACK_CHROME).remove();
+  $('script').each((_, el) => { const t = $(el).html() ?? ''; if (/__wm\.(init|wombat|bt)|wombat\.js|_static\/js/.test(t)) $(el).remove(); });
+}
 
 const SOCIAL_RE = /(instagram\.com|facebook\.com|fb\.com|tiktok\.com|twitter\.com|x\.com|linkedin\.com|youtube\.com)/i;
 
@@ -23,6 +34,10 @@ export function brandCssVars(cssOrHtml: string): Record<string, string> {
  */
 export function parsePage(html: string, url: string): PageData {
   const $ = cheerio.load(html);
+  const archive = isArchiveUrl(url);
+  if (archive) stripWaybackChrome($);
+  // On an archived copy every link is wrapped as /web/<stamp>/<original>; read the original for socials and the same-site check.
+  const unwrap = (href: string) => (archive ? (archiveOriginal(abs(href, url) ?? '') ?? href) : href);
   const headerSel = 'header, nav, [role="banner"], [class*="header"], [id*="header"], [class*="navbar"], [class*="nav-"]';
   const images: PageImage[] = [];
   $('img').each((_, el) => {
@@ -47,7 +62,7 @@ export function parsePage(html: string, url: string): PageData {
   const socialLinks = new Set<string>();
   const emails = new Set<string>();
   $('a[href]').each((_, el) => {
-    const href = $(el).attr('href') ?? '';
+    const href = unwrap($(el).attr('href') ?? '');
     if (SOCIAL_RE.test(href)) socialLinks.add(href.trim());
     if (href.startsWith('mailto:')) { const e = href.replace(/^mailto:/i, '').split('?')[0].trim(); if (e.includes('@')) emails.add(e.toLowerCase()); }
   });

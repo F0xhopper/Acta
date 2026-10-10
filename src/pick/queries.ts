@@ -8,6 +8,17 @@ export function recordPick(leadId: number, by: 'auto' | 'manual', reason: string
 }
 export function removePick(leadId: number) { d().prepare('DELETE FROM picks WHERE lead_id = ?').run(leadId); }
 
+export type ConsentAnswer = 'yes' | 'no';
+export interface Consent { answer: ConsentAnswer; at: string; note: string | null }
+/** What they said on the call before the build (the call checkpoint). */
+export function consentOf(leadId: number): Consent | null {
+  const r = d().prepare('SELECT consent, consent_at, consent_note FROM picks WHERE lead_id = ?').get(leadId) as { consent: string | null; consent_at: string | null; consent_note: string | null } | undefined;
+  return r?.consent ? { answer: r.consent as ConsentAnswer, at: r.consent_at ?? '', note: r.consent_note } : null;
+}
+export function recordConsent(leadId: number, answer: ConsentAnswer, note: string | null) {
+  d().prepare('UPDATE picks SET consent = ?, consent_at = ?, consent_note = ? WHERE lead_id = ?').run(answer, isoNow(), note, leadId);
+}
+
 /** Picks made in the last seven days, with what's needed for the diversity caps. */
 export function picksThisWeek(): { lead_id: number; category_key: string; area: string }[] {
   return d().prepare(`SELECT p.lead_id, l.category_key, l.area FROM picks p JOIN leads l ON l.id = p.lead_id WHERE p.picked_at >= ?`)

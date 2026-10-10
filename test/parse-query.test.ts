@@ -43,3 +43,30 @@ describe('parseQuery', () => {
     expect(resolveCategory('end of tenancy cleaning')?.key).toBe('cleaner');
   });
 });
+
+describe('parseQuery across markets', () => {
+  it('finds the market from a neighbourhood and biases to it', () => {
+    const p = parseQuery('barbers in Kings Heath');
+    expect(p.market?.key).toBe('birmingham');
+    expect(p.textQuery).toBe('barbers in Kings Heath, Birmingham, UK');
+  });
+  it('searches anywhere else as written, with no market', () => {
+    const p = parseQuery('cafes in Didsbury, Manchester');
+    expect(p.market).toBeUndefined();
+    expect(p.area).toBe('Didsbury, Manchester');
+    expect(p.textQuery).toBe('cafes in Didsbury, Manchester, UK');
+    expect(parseQuery('plumbers in Leeds').textQuery).toBe('plumbers in Leeds, UK');
+  });
+  it('knows configured markets that are switched off', () => {
+    const p = parseQuery('barbers in Earlsdon');
+    expect(p.market?.key).toBe('coventry');
+    expect(p.textQuery).toBe('barbers in Earlsdon, Coventry, UK');
+  });
+});
+
+describe('category search words', () => {
+  it('every category searches for words that resolve back to itself', async () => {
+    const { loadCategories, categoryQuery } = await import('../src/config.js');
+    for (const c of loadCategories()) expect(parseQuery(`${categoryQuery(c)} in Moseley`).categoryKey, c.key).toBe(c.key);
+  });
+});

@@ -110,8 +110,17 @@ export async function deploySite(dir: string, slug: string, opts: DeployOpts): P
     const connect = await vercel(['git', 'connect', '--yes']);
     if (connect.code !== 0) warnings.push(`git connect: ${(connect.stderr || connect.stdout).trim().split('\n').pop()?.slice(0, 200)}`);
   }
-  const envAdd = await vercel(['env', 'add', 'ACTA_PREVIEW', 'production', '--force'], '1');
-  if (envAdd.code !== 0 && !/already exists/i.test(envAdd.stderr + envAdd.stdout)) warnings.push(`env add: ${(envAdd.stderr || envAdd.stdout).trim().slice(0, 200)}`);
+  // Preview flag, the slug (so the site can count its own opens), and the shared open-counter store when configured.
+  const envs: [string, string | undefined][] = [
+    ['ACTA_PREVIEW', '1'], ['ACTA_SLUG', slug],
+    ['UPSTASH_REDIS_REST_URL', process.env.UPSTASH_REDIS_REST_URL], ['UPSTASH_REDIS_REST_TOKEN', process.env.UPSTASH_REDIS_REST_TOKEN],
+  ];
+  for (const [name, value] of envs) {
+    if (!value) continue;
+    const envAdd = await vercel(['env', 'add', name, 'production', '--force'], value);
+    if (envAdd.code !== 0 && !/already exists/i.test(envAdd.stderr + envAdd.stdout)) warnings.push(`env add ${name}: ${(envAdd.stderr || envAdd.stdout).trim().slice(0, 200)}`);
+  }
+  if (!process.env.UPSTASH_REDIS_REST_URL) say('preview opens not counted: set UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN in .env to count them');
 
   const prot = await configureProject(project);
   if (prot) warnings.push(prot);

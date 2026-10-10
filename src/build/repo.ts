@@ -1,4 +1,4 @@
-import { cpSync, existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, rmSync, writeFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { env, ROOT } from '../config.js';
 import { git, must, run } from './exec.js';
@@ -14,7 +14,11 @@ const SKIP = new Set(['node_modules', '.next', '.git', 'out', 'test-results', 'p
 export function copyStarter(slug: string, force = false): string {
   const dir = siteDir(slug);
   if (existsSync(join(dir, '.git')) && !force) return dir;
-  if (existsSync(dir)) rmSync(dir, { recursive: true, force: true });
+  if (existsSync(join(dir, '.git'))) {
+    // A rebuild keeps the repo's history (so the push stays a fast-forward and the old version is one checkout
+    // away) and node_modules (so the install is quick). Everything else starts again from the starter.
+    for (const e of readdirSync(dir)) if (e !== '.git' && e !== 'node_modules') rmSync(join(dir, e), { recursive: true, force: true });
+  } else if (existsSync(dir)) rmSync(dir, { recursive: true, force: true });
   if (!existsSync(join(STARTER_DIR, 'package.json'))) throw new Error(`Starter not found at ${STARTER_DIR}`);
   cpSync(STARTER_DIR, dir, { recursive: true, filter: (src) => !SKIP.has(src.split('/').pop() ?? '') || src === STARTER_DIR });
   for (const d of ['acta/research', 'acta/qa', 'public/brand/photos']) mkdirSync(join(dir, d), { recursive: true });
@@ -62,6 +66,19 @@ export async function commitAll(dir: string, message: string): Promise<string | 
 
 export const headSha = async (dir: string) => (await git(dir, 'rev-parse', 'HEAD')).stdout.trim();
 
+export const SITE_TOPIC = 'acta-preview';
+
+/**
+ * Site repos are private, always: they hold a client's brand, photos and copy before the client has even been asked.
+ * A repo that already exists public (made by hand, or flipped later) is made private again before anything is pushed.
+ */
+export async function ensurePrivate(full: string, cwd: string): Promise<boolean> {
+  const r = await run('gh', ['repo', 'view', full, '--json', 'isPrivate', '-q', '.isPrivate'], { cwd });
+  if (r.code !== 0 || r.stdout.trim() === 'true') return false;
+  await must('gh', ['repo', 'edit', full, '--visibility', 'private', '--accept-visibility-change-consequences'], { cwd });
+  return true;
+}
+
 /** Create the private GitHub repo from the local directory and push main. Idempotent. */
 export async function createRemote(dir: string, slug: string, description: string): Promise<string> {
   const owner = env('GITHUB_OWNER', 'F0xhopper');
@@ -71,10 +88,11 @@ export async function createRemote(dir: string, slug: string, description: strin
   if (exists.code === 0 && exists.stdout.trim()) {
     const remotes = await run('git', ['remote'], { cwd: dir });
     if (!remotes.stdout.includes('origin')) await git(dir, 'remote', 'add', 'origin', `https://github.com/${full}.git`);
+    await ensurePrivate(full, dir);
     return exists.stdout.trim();
   }
   await must('gh', ['repo', 'create', full, '--private', '--source', '.', '--push', '--description', description.slice(0, 350)], { cwd: dir, timeoutMs: 120_000 });
-  await must('gh', ['repo', 'edit', full, '--add-topic', 'acta-preview', '--enable-issues=false', '--enable-wiki=false'], { cwd: dir });
+  await must('gh', ['repo', 'edit', full, '--add-topic', SITE_TOPIC, '--enable-issues=false', '--enable-wiki=false'], { cwd: dir });
   return `https://github.com/${full}`;
 }
 

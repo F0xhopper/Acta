@@ -7,6 +7,15 @@ import type { FullLead } from '../db/types.js';
 import type { BuildRow } from '../build/queries.js';
 import { conceptChosen, loadCheckpoints, photosCurated } from '../build/checkpoints.js';
 import { hook, reasonsOf } from '../report/format.js';
+import { reachOf, REACH_LABEL } from '../score/reach.js';
+import { callScript, needsCall } from '../pick/call.js';
+import { consentOf } from '../pick/queries.js';
+import { contentOf } from '../score/content.js';
+import { findCategory } from '../config.js';
+import { loadPick, type PickConfig } from '../pick/config.js';
+import { gradeLead, missing } from '../pick/grade.js';
+import { outcomeStats } from '../pick/queries.js';
+import { learning, type TradeLearning } from '../pick/trade.js';
 import { describeLead, reviewsOf } from '../report/describe.js';
 import { displayUkPhone } from '../util/phone.js';
 import type {
@@ -44,6 +53,35 @@ export function toLeadSummary(full: FullLead, buildState: string | null): LeadSu
     mapsUrl: lead.google_maps_url,
     sourceQuery: lead.source_query,
     discoveredAt: lead.discovered_at,
+    reach: toReach(full),
+    content: toContent(full),
+    ...(() => { const g = gradeOf(full); return { verdict: g.verdict, grade: g.score, missing: g.failed.length ? missing(g) : null, gaps: g.failed.map((f) => f.short) }; })(),
+  };
+}
+
+/** The pick config, re-read at most every few seconds: lists grade hundreds of leads at once. */
+let pickCache: { at: number; cfg: PickConfig; learn: TradeLearning } | null = null;
+const pick = () => { if (!pickCache || Date.now() - pickCache.at > 5000) pickCache = { at: Date.now(), cfg: loadPick(), learn: learning(outcomeStats()) }; return pickCache; };
+export const gradeOf = (full: FullLead) => gradeLead(full, pick().cfg, findCategory(full.lead.category_key), pick().learn);
+export function toQualify(full: FullLead): import('./api-types.js').Qualify {
+  const g = gradeOf(full);
+  return { verdict: g.verdict, grade: g.score, gates: g.gates, parts: g.parts };
+}
+
+export function toContent(full: FullLead): import('./api-types.js').ContentSummary {
+  const c = contentOf(full, findCategory(full.lead.category_key));
+  const have = c.items.filter((i) => i.have !== 'no').map((i) => `${i.label}: ${i.detail}`);
+  return { score: c.score, level: c.level, label: c.label, summary: [`${c.label} (${c.score}/100)`, ...have, ...(c.makeUp.length ? ['Would make up:', ...c.makeUp] : [])].join('\n') };
+}
+
+export function toReach(full: FullLead): import('./api-types.js').Reach {
+  const r = reachOf(full, findCategory(full.lead.category_key));
+  return {
+    level: r.level, label: REACH_LABEL[r.level], email: r.email, emailSource: !r.email ? null : full.lead.manual_email?.trim() ? 'you' : r.email === full.lead.web_email?.trim() ? 'web' : 'site',
+    emailUrl: r.email && r.email === full.lead.web_email?.trim() ? full.lead.web_email_url ?? null : null,
+    emailAllowed: r.emailAllowed, mobile: r.mobile, walkIn: r.walkIn, socials: r.socials, summary: r.summary,
+    checkedAt: (full.audit as { contact_checked_at?: string | null } | undefined)?.contact_checked_at ?? null,
+    webSearchedAt: full.lead.email_search_at ?? null,
   };
 }
 
@@ -59,9 +97,10 @@ export function nextActionFor(status: PipelineStatus, build: Pick<BuildSummary, 
   const s = build?.state;
   if (status === 'lost' || status === 'do_not_contact' || status === 'won') return null;
   if (s === 'failed') return { label: `Retry from ${build!.failedStep ?? 'the start'}`, tab: 'progress', kind: 'failed' };
+  if (s === 'awaiting_call') return { label: 'Call them first', tab: 'overview', kind: 'call' };
   if (s === 'awaiting_photos') return { label: 'Sort the photos', tab: 'photos', kind: 'photos' };
   if (s === 'awaiting_concept') return { label: 'Choose a concept', tab: 'concepts', kind: 'concept' };
-  if (build?.activeJobId || (s && ['picked', 'gathered', 'repo_ready', 'researched', 'built', 'gated', 'pushed', 'deployed', 'revising'].includes(s) && status === 'building')) return { label: 'Watch the build', tab: 'progress', kind: 'wait' };
+  if (build?.activeJobId || (s && ['picked', 'gathered', 'repo_ready', 'researched', 'built', 'gated', 'pushed', 'deployed', 'revising', 'awaiting_usage'].includes(s) && status === 'building')) return { label: 'Watch the build', tab: 'progress', kind: 'wait' };
   if (s === 'preview_ready') return { label: 'Review the site', tab: 'review', kind: 'review' };
   if (s === 'approved' && !sent && status === 'preview_ready') return { label: 'Send the pitch', tab: 'deliver', kind: 'send' };
   if (status === 'replied') return { label: 'Log the outcome', tab: 'overview', kind: 'reply' };
@@ -79,6 +118,9 @@ export function toLeadDetail(full: FullLead, build: BuildSummary | null, extraTi
     .sort((x, y) => (x.at < y.at ? 1 : -1)).slice(0, 80);
   return {
     ...base,
+    qualify: toQualify(full),
+    foundSiteUrl: full.lead.found_site_url ?? null,
+    ...(() => { const c = contentOf(full, findCategory(full.lead.category_key)); return { contentItems: c.items, makeUp: c.makeUp }; })(),
     description: describeLead(full),
     hours,
     reviewsList: reviewsOf(full).map((r) => ({ rating: r.rating, text: r.text, author: r.author, when: r.when })),
@@ -92,13 +134,28 @@ export function toLeadDetail(full: FullLead, build: BuildSummary | null, extraTi
     timeline,
     build,
     nextAction: nextActionFor(base.status, build, sent),
+    callFirst: callFirstFor(full, build?.state ?? null),
   };
+}
+
+/** The call before the build, for anyone who can't be cold emailed, once picked (or while the checkpoint is on and they haven't been built). */
+export function callFirstFor(full: FullLead, state: BuildState | null): LeadDetail['callFirst'] {
+  const cp = loadCheckpoints();
+  if (!needsCall(full)) return null;
+  const consent = consentOf(full.lead.id);
+  const waiting = state === 'awaiting_call';
+  if (!cp.call && !waiting && !consent) return null;
+  if (state && !['picked', 'awaiting_call'].includes(state) && !consent) return null;
+  let script: ReturnType<typeof callScript>;
+  try { script = callScript(full); } catch { script = { phone: null, whatsapp: false, walkIn: false, lines: ['Fill in config/offer.yaml to see the script.'] }; }
+  return { waiting, phone: script.phone, whatsapp: script.whatsapp, walkIn: script.walkIn, lines: script.lines, consent };
 }
 
 // ---------- the build rail ----------
 
-const ORDER: BuildState[] = ['picked', 'gathered', 'repo_ready', 'awaiting_photos', 'researched', 'awaiting_concept', 'built', 'gated', 'pushed', 'deployed', 'preview_ready'];
+const ORDER: BuildState[] = ['picked', 'awaiting_call', 'gathered', 'repo_ready', 'awaiting_photos', 'researched', 'awaiting_concept', 'built', 'gated', 'pushed', 'deployed', 'preview_ready'];
 const RAIL: { key: string; label: string; checkpoint: boolean; doneAt: BuildState; step: string }[] = [
+  { key: 'call', label: 'Call first', checkpoint: true, doneAt: 'gathered', step: 'gather' },
   { key: 'gather', label: 'Gather', checkpoint: false, doneAt: 'gathered', step: 'gather' },
   { key: 'repo', label: 'Set up', checkpoint: false, doneAt: 'repo_ready', step: 'repo' },
   { key: 'photos', label: 'Photos', checkpoint: true, doneAt: 'researched', step: 'research' },
@@ -112,7 +169,7 @@ const RAIL: { key: string; label: string; checkpoint: boolean; doneAt: BuildStat
 ];
 const STEP_ORDER = ['gather', 'repo', 'research', 'agent', 'gate', 'push', 'deploy', 'evidence'];
 
-export interface RailFacts { curated: boolean; chosen: boolean; photosOn: boolean; conceptOn: boolean }
+export interface RailFacts { curated: boolean; chosen: boolean; photosOn: boolean; conceptOn: boolean; callOn?: boolean; consented?: boolean }
 
 /** The rail for a build state. Pure. */
 export function buildRail(state: BuildState, failedStep: string | null, running: boolean, f: RailFacts): RailStep[] {
@@ -121,18 +178,26 @@ export function buildRail(state: BuildState, failedStep: string | null, running:
   const out: RailStep[] = RAIL.map((r) => {
     let status: RailStep['status'];
     if (state === 'torn_down') status = 'todo';
-    else if (state === 'failed') {
+    else if (state === 'failed' || state === 'awaiting_usage') {
+      // A usage pause sits where a failure would, but waits rather than fails.
       const fi = STEP_ORDER.indexOf(failedStep ?? 'gather');
       const si = STEP_ORDER.indexOf(r.step);
-      status = si < fi ? 'done' : si === fi && !r.checkpoint ? 'failed' : 'todo';
+      status = si < fi ? 'done' : si === fi && !r.checkpoint ? (state === 'failed' ? 'failed' : 'waiting') : 'todo';
+      if (r.key === 'call') status = f.consented ? 'done' : 'skipped';
       if (r.key === 'photos' && fi > STEP_ORDER.indexOf('repo')) status = f.curated ? 'done' : 'skipped';
       if (r.key === 'concepts' && f.chosen) status = 'done';
     } else if (state === 'revising') {
       status = STEP_ORDER.indexOf(r.step) < STEP_ORDER.indexOf('agent') || r.checkpoint ? 'done' : 'todo';
+      if (r.key === 'call' && !f.consented) status = 'skipped';
       if (r.key === 'photos' && !f.curated) status = 'skipped';
       if (r.key === 'concepts' && !f.chosen) status = 'skipped';
     } else {
       status = idx >= ORDER.indexOf(r.doneAt) ? 'done' : 'todo';
+      if (r.key === 'call') {
+        if (state === 'awaiting_call') status = 'waiting';
+        else if (f.consented) status = 'done';
+        else if (status === 'done' || idx > ORDER.indexOf('awaiting_call') || !f.callOn) status = 'skipped';
+      }
       if (r.key === 'photos') {
         if (state === 'awaiting_photos') status = 'waiting';
         else if (f.curated) status = 'done';
@@ -149,7 +214,7 @@ export function buildRail(state: BuildState, failedStep: string | null, running:
     return { key: r.key, label: r.label, checkpoint: r.checkpoint, status };
   });
   if (running && !finished && state !== 'failed') {
-    const cur = out.find((s) => s.status === 'todo' || (s.status === 'waiting' && false));
+    const cur = state === 'awaiting_usage' ? out.find((s) => s.status === 'waiting' && !s.checkpoint) : out.find((s) => s.status === 'todo' || (s.status === 'waiting' && false));
     if (cur) cur.status = 'current';
   }
   return out;
@@ -159,7 +224,7 @@ export function toBuildSummary(b: BuildRow & { slug: string; name: string }, act
   const dir = b.repo_dir ?? siteDir(b.slug);
   const hero = join(siteDir(b.slug), 'acta', 'qa', 'hero-mobile.png');
   const cp = loadCheckpoints();
-  const facts: RailFacts = { curated: existsSync(dir) && photosCurated(dir), chosen: existsSync(dir) && conceptChosen(dir), photosOn: cp.photos, conceptOn: cp.concept };
+  const facts: RailFacts = { curated: existsSync(dir) && photosCurated(dir), chosen: existsSync(dir) && conceptChosen(dir), photosOn: cp.photos, conceptOn: cp.concept, callOn: cp.call, consented: consentOf(b.lead_id)?.answer === 'yes' };
   return {
     slug: b.slug,
     name: b.name,

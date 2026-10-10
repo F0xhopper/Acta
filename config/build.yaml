@@ -1,17 +1,42 @@
 # Build settings the UI and the CLI share.
 #
-# Checkpoints are the two places a build stops and waits for you:
+# Checkpoints are optional places a build stops and waits for you:
+#   call:    before anything is built, for a business that can't be cold emailed (not a limited company, or no
+#            email): a thirty-second call first ("I'd like to mock one up, can I WhatsApp it to you?"). Yes turns a
+#            cold build into a consented delivery; no saves the build. The Overview tab has the script and the two
+#            buttons; `pnpm pipeline call <slug> yes|no` does the same. Leads that can be cold emailed never stop here.
 #   photos:  after the brand is gathered, you keep, drop or pick the hero photo before any design starts.
 #   concept: after the agent writes three concepts with mock-ups, you choose one before it builds.
-# A paused build waits in the inbox. The overnight builder skips paused builds and moves on.
+# Off (the default you chose on 2026-10-08): the agent's photo audit picks the photos and its critic picks the
+# concept, and you review only the finished site. Turn any on to be asked at that point instead.
 checkpoints:
-  photos: true
-  concept: true
+  call: false
+  photos: false
+  concept: false
 
-# Automatic discovery. Off for now: you search from the Leads page (or `pnpm pipeline run "<query>"`)
-# and pick by hand. Set either to true to bring it back.
-#   sweep:     the weekly rotating search from config/sweep.yaml (`pnpm pipeline sweep`, and the Sunday job)
-#   auto_pick: the picker rule in config/pick.yaml (`pnpm pipeline pick --auto`, and the Sunday job)
+# Automation.
+#   sweep:     automatic lead finding: the daily search from config/sweep.yaml (`pnpm pipeline leads`, the 07:30 job).
+#              Switched on 2026-10-09 for a steady flow of new, ranked leads. Suggestions only: you still pick.
+#   auto_pick: the picker rule in config/pick.yaml (`pnpm pipeline pick --auto`, and the Sunday job). Off: you pick by hand.
+#   web_email: part of every search: leads in tiers A-C with no email on their own site get a short Claude search of the
+#              open web (booking sites, directories), checked against the page it's on. Uses Claude usage; stops at the guard.
+#   autopilot: keep the pipeline moving by itself while the Acta server runs (`pnpm ui`, or the always-on launchd job
+#              from `pnpm pipeline schedule install`): run the daily lead search, and whenever nothing is building, pick
+#              the best lead that passes every gate in config/pick.yaml and build it, then tell you when the site is
+#              ready to review (a macOS notification, plus a push to your phone when ACTA_NOTIFY_URL is in .env).
+#              It stops starting builds at the Claude usage limit (ACTA_USAGE_STOP_PERCENT, 70%), at the daily build
+#              limit, and while too many previews wait for your review. Builds paused at the limit carry on by
+#              themselves once it resets. Picks one lead at a time, just before building it, so auto_pick can stay off.
 automation:
-  sweep: false
+  sweep: true
   auto_pick: false
+  web_email: true
+  autopilot: true
+
+# The autopilot's limits and timetable (local time).
+autopilot:
+  max_builds_per_day: 3     # builds it may start in a day; a build paused at the usage limit and resumed counts once
+  max_unreviewed: 3         # with this many previews waiting for your review it stops building until you review or close one
+  leads_at: "07:30"         # the daily lead run (pnpm pipeline leads). If the Mac was asleep, it runs when it wakes
+  day_at: "09:15"           # weekday housekeeping (pnpm pipeline day): stale previews torn down, leaderboard
+  week_at: "22:00"          # Sunday: re-audit and re-score everything (pnpm pipeline week)

@@ -1,28 +1,64 @@
-# The auto-picker. Hard filters first, then a pick score, then diversity caps. Everything it decides is printed.
-filters:
-  tiers: [A]
-  min_reviews: 20
-  max_review_age_days: 365
-  min_photos: 3              # Google photos on the listing; unknown counts as 0 unless allow_unknown_photos
-  allow_unknown_photos: true # true until every lead has been re-discovered with photo counts
-  audit_fresh_days: 30       # re-check anything older than this before picking
-  require_contact: true      # a phone number, or a limited-company match (email route)
+# Qualifying leads. A lead PASSES when it clears every gate; passers are ranked by their grade (0-100). The Suggested
+# list is the passers, then the near misses (one gate short, with what's missing, e.g. "no email: check Facebook").
+# Auto-pick (config/build.yaml automation.auto_pick) builds from passers only. Everything it decides is printed.
+gates:
+  min_trade_value: 50        # builds are the scarce resource: a trade worth less than this (barbers 30, cafes 40,
+                             # takeaways 20, estate agents 40) is a near miss, not a pass, so it never displaces a
+                             # roofer. Uses the learned value, so a trade that proves you wrong (replies more than
+                             # average) rises above the line on its own.
+  min_opportunity: 50        # a live site passes the gap gate when it's this weak; no real site always passes
+  weak_site_trade_value: 70  # the buyer lane: a live site that shows its age (cheap builder, free-tier address, no
+                             # viewport, no HTTPS, Lighthouse under 40, copyright three years old) also passes the gap
+                             # gate in a trade worth this much. That owner has paid for a site once already, which
+                             # says more about paying again than having none does.
+  min_reviews: 15            # established
+  min_rating: 4.0
+  max_review_age_days: 365   # active: a review within the year ...
+  recency_reviews_under: 30  # ... but only judged from review dates under this many reviews. Google returns the five
+                             # most relevant reviews, not the newest, so a busy business can look dormant. Reviews
+                             # gained between sightings (the daily sweep re-sees listings) count as active at any size.
+  reach: [cold_email, email, mobile, social]
+                             # somewhere to send the preview once they've said yes. cold_email: a limited company with
+                             # an email, which can be emailed without a call. email: any email, after a call. mobile:
+                             # WhatsApp after a call. social: a DM. landline and visit fail: nowhere to send the link.
+                             # Businesses with no website rarely publish an email, so [cold_email] alone passes almost none.
+                             # The grade still puts cold email first (reach 15 vs 9 for email, 6 for mobile or social).
+  min_content: 55            # enough to build from without making most of it up (src/score/content.ts)
 
-score:
-  lead_weight: 0.6           # the lead's total score
-  buildability_weight: 0.4
-  ltd_bonus: 5               # limited companies can be emailed without you
+# The grade: what each part is worth out of 100. Every part comes with the reason it scored what it did.
+grade:
+  gap: 20                    # how much a site would help (the opportunity score)
+  trade: 20                  # the trade's value, learned from your pitches
+  reputation: 15             # reviews, rating, how recent
+  reach: 15                  # cold email allowed 100%, a mobile (call, then WhatsApp) 70%, an email but call first
+                             # 60%, a social page 40%, landline 20%, visit only 5%
+  content: 15                # what there is to build from
+  means: 10                  # can they pay: limited company 40%, incorporated one to five years ago 20% (the
+                             # classic first-site buyer), trade that pays for marketing 20%, 50+ reviews 20%
+
+# Trade value: the guess in config/categories.yaml (`trade_value`), moved by your results. A trade that replies more
+# often than your average rises, one that never replies sinks.
+trade:
+  learn_weight: 10           # pitches in a trade before its results count as much as the guess
+  sweep_full_at: 75          # the daily sweep counts a good lead fully from this trade value up, a weaker trade's in
+                             # proportion (barbers at 30 count 0.4), so it leans towards good trades without dropping any
+
+auto:
+  audit_fresh_days: 30       # auto-pick re-checks anything older than this before building
+
+# The open-web email search (a Claude run per lead, src/audit/web-email.ts) only runs where an email would unlock
+# cold email: limited companies, in trades worth it. Sole traders can't be cold emailed whatever is found.
+web_email:
+  ltd_only: true
+  min_trade_value: 60
+
+suggest:
+  near_misses: 12            # near misses shown after the passers
+  new_days: 7                # found this recently: marked new
+  limit: 12
+  repeat_decay: 0.85         # each further lead of the same trade on the same street sinks this much in the order
 
 diversity:
   max_per_week: 10
   max_per_trade_area: 2      # same category in the same area per week
   max_walk_in_per_area: 1    # walk-in trades: one per high street per week
-
-buildability:                # 0-100, what we have to build from
-  photos_8: 40
-  photos_3: 25
-  photos_1: 10
-  has_live_site: 15          # a site to take logo and colours from
-  has_description: 15
-  reviews_with_text_3: 20
-  hours_listed: 10

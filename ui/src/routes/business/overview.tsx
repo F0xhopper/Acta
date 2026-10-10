@@ -1,16 +1,19 @@
-import { ArrowRight, Clock, Phone, Quote, Star } from 'lucide-react';
+import { ArrowRight, Clock, Phone, PhoneCall, Quote, Star } from 'lucide-react';
 import { useState } from 'react';
 import type { LeadDetail, TimelineEntry } from '../../../../src/ui/api-types';
-import { usePick, useSetStatus, useStartBuild, useTeardown } from '../../api';
+import { useCallOutcome, usePick, useSetStatus, useStartBuild, useTeardown } from '../../api';
 import { useAgentGuard } from '../../components/agent-guard';
-import { Button, ButtonLink } from '../../components/ui/button';
+import { Button, ButtonA, ButtonLink } from '../../components/ui/button';
 import { Chip, Dot } from '../../components/ui/chip';
 import { Confirm } from '../../components/ui/dialog';
 import { Section } from '../../components/ui/section';
+import { ContentChip, ContentList } from '../../components/content';
+import { QualifyPanel, VerdictChip } from '../../components/qualify';
 import { useToast } from '../../components/ui/toast';
 import { cn } from '../../lib/cn';
 import { CHANNEL_LABEL, SITE_STATUS_LABEL, clock, timeAgo } from '../../lib/format';
 import { useBusiness } from './context';
+import { EmailEditor, EmailLookup, ReachChip, ReachRoutes, useReachGate, EmailChip } from '../../components/reach';
 import { bizPath } from '../../lib/links';
 
 /** The three reviews worth quoting: highest rated, then the most said. */
@@ -23,15 +26,53 @@ function NextAction() {
   const guard = useAgentGuard();
   const start = useStartBuild();
   const toast = useToast();
+  const reachGate = useReachGate();
   const a = lead.nextAction;
   if (!a) return null;
   if (a.kind === 'build') {
-    const go = () => void guard(`Building ${lead.name}`, (override) => start.mutateAsync({ slug, override }))
+    const run = () => void guard(`Building ${lead.name}`, (override) => start.mutateAsync({ slug, override }))
       .then((job) => { if (job) toast({ kind: 'ok', text: `Build queued for ${lead.name}`, link: { to: bizPath(slug, 'progress'), label: 'Watch progress' } }); });
-    return <Button size="lg" variant="primary" loading={start.isPending} onClick={go}>{a.label}<ArrowRight className="size-4" aria-hidden /></Button>;
+    const go = () => reachGate.gate([lead], run);
+    return <><Button size="lg" variant="primary" loading={start.isPending} onClick={go}>{a.label}<ArrowRight className="size-4" aria-hidden /></Button>{reachGate.dialog}</>;
   }
   if (a.kind === 'wait') return <ButtonLink size="lg" variant="secondary" to={bizPath(slug, a.tab)}><Dot tone="live" />{a.label}</ButtonLink>;
+  if (a.kind === 'call') return <ButtonA size="lg" variant="primary" href="#call-first" target="_self" rel={undefined}><PhoneCall className="size-4" aria-hidden />{a.label}</ButtonA>;
   return <ButtonLink size="lg" variant="primary" to={bizPath(slug, a.tab)}>{a.label}<ArrowRight className="size-4" aria-hidden /></ButtonLink>;
+}
+
+/** The call before the build: the script, then one tap to record yes or no. No asks first, because it marks them lost. */
+function CallFirst() {
+  const { slug, lead } = useBusiness();
+  const call = useCallOutcome();
+  const toast = useToast();
+  const [askNo, setAskNo] = useState(false);
+  const [note, setNote] = useState('');
+  const c = lead.callFirst;
+  if (!c) return null;
+  const answer = (a: 'yes' | 'no') => void call.mutateAsync({ slug, answer: a, note: note.trim() || undefined })
+    .then((r) => { setAskNo(false); toast({ kind: r.ok ? 'ok' : 'error', text: r.message }); })
+    .catch((e: Error) => toast({ kind: 'error', text: e.message }));
+  return (
+    <Section title={<h2 id="call-first" className="text-sm font-medium">Call first</h2>} actions={c.consent
+      ? <Chip dot={c.consent.answer === 'yes' ? 'ok' : 'muted'}>{c.consent.answer === 'yes' ? 'They said yes' : 'They said no'} · {timeAgo(c.consent.at)}</Chip>
+      : c.waiting ? <Chip dot="warn">Build waits for this</Chip> : null} bodyClassName="flex flex-col gap-4 px-5 py-4">
+      <p className="text-sm text-fg-3">{c.waiting ? 'Thirty seconds on the phone before anything is built. Yes turns the build into one they asked to see; no saves it.' : 'Cold email isn\'t allowed here, so the first contact is a call either way.'}</p>
+      <div className="flex flex-col gap-2 text-sm text-fg">{c.lines.filter(Boolean).map((l, i) => <p key={i} className={cn(l.startsWith('"') && 'rounded-card border border-border-soft bg-panel px-3.5 py-3 text-fg')}>{l}</p>)}</div>
+      {c.consent?.note ? <p className="text-sm text-fg-3">Note: {c.consent.note}</p> : null}
+      {!c.consent ? (
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <input className="field flex-1" placeholder="What they said (optional)" value={note} onChange={(e) => setNote(e.target.value)} aria-label="Note from the call" />
+          <div className="flex gap-2">
+            <Button variant="primary" loading={call.isPending} onClick={() => answer('yes')}>They said yes</Button>
+            <Button variant="secondary" onClick={() => setAskNo(true)}>They said no</Button>
+          </div>
+          <Confirm open={askNo} onClose={() => setAskNo(false)} onConfirm={() => answer('no')} busy={call.isPending} title={`${lead.name} said no?`} confirmLabel="Mark as no">
+            Nothing gets built, the pick is dropped, and they go on the do-not-contact list.
+          </Confirm>
+        </div>
+      ) : null}
+    </Section>
+  );
 }
 
 type Outcome = 'replied' | 'followup_1' | 'followup_2' | 'won' | 'lost';
@@ -126,7 +167,7 @@ function DangerZone() {
 }
 
 export function OverviewTab() {
-  const { lead } = useBusiness();
+  const { slug, lead } = useBusiness();
   const reviews = bestReviews(lead.reviewsList);
   const a = lead.audit;
   return (
@@ -140,11 +181,28 @@ export function OverviewTab() {
           {outcomesFor(lead.status).length ? <Outcomes /> : <NextAction />}
         </div>
 
+        <CallFirst />
+
+        {lead.qualify ? <Section title="Gates" actions={<VerdictChip verdict={lead.qualify.verdict} grade={lead.qualify.grade} missing={lead.missing} />} bodyClassName="px-5 py-4">
+          <QualifyPanel qualify={lead.qualify} />
+        </Section> : null}
+
+        <Section title="How to reach them" actions={<ReachChip reach={lead.reach} />} bodyClassName="flex flex-col gap-4 px-5 py-4">
+          <p className="text-sm text-fg">{lead.reach.summary}</p>
+          <ReachRoutes reach={lead.reach} phone={lead.phone} />
+          <EmailLookup slug={slug} lead={lead} reach={lead.reach} />
+          <EmailEditor slug={slug} reach={lead.reach} />
+        </Section>
+
+        <Section title="What we have to build from" actions={<ContentChip content={lead.content} long />} bodyClassName="px-5 py-3">
+          <ContentList items={lead.contentItems} makeUp={lead.makeUp} />
+        </Section>
+
         <Section title="Why it scored">
           <div className="flex flex-col gap-3 px-5 py-4">
             <div className="flex items-end gap-6">
               <div><p className="text-xs text-fg-3">Score</p><p className="num-display mt-1 text-[40px]">{lead.score ?? '—'}</p></div>
-              <div className="pb-1 text-sm text-fg-3">Opportunity {lead.opportunity ?? '—'} · Viability {lead.viability ?? '—'}</div>
+              <div className="pb-1 text-sm text-fg-3">Opportunity {lead.opportunity ?? '—'} · Viability {lead.viability ?? '—'} · Content {lead.content.score}</div>
             </div>
             {lead.hook ? <p className="text-sm text-fg">{lead.hook}</p> : null}
             {lead.reasons.length ? <ul className="flex flex-col gap-1.5">{lead.reasons.map((r) => <li key={r} className="flex gap-2 text-sm text-fg-2"><span aria-hidden className="mt-2 size-1 shrink-0 rounded-full bg-fg-3" />{r}</li>)}</ul> : null}
@@ -187,10 +245,12 @@ export function OverviewTab() {
             <Fact label="Phone">{lead.phone ? <a href={`tel:${lead.phone.replace(/\s/g, '')}`} className="inline-flex items-center gap-1.5 text-fg hover:underline"><Phone className="size-3.5" aria-hidden />{lead.phone}</a> : 'None listed'}</Fact>
             <Fact label="Address">{lead.address ?? '—'}</Fact>
             <Fact label="Rating">{lead.rating !== null ? <span className="inline-flex items-center gap-1"><Star className="size-3.5" aria-hidden />{lead.rating.toFixed(1)} from {lead.reviews} reviews</span> : `${lead.reviews} reviews`}</Fact>
+            <Fact label="Email">{lead.reach.email ? <><a href={`mailto:${lead.reach.email}`} className="text-fg hover:underline">{lead.reach.email}</a><span className="text-fg-3"> · {lead.reach.emailAllowed ? 'cold email allowed' : 'call first'}</span></> : <EmailChip reach={lead.reach} websiteStatus={lead.websiteStatus} />}</Fact>
             <Fact label="Business">{lead.ltd ? 'Limited company' : 'Sole trader or partnership'}</Fact>
             <Fact label="Channel">{lead.channel ? CHANNEL_LABEL[lead.channel] ?? lead.channel : '—'}{!lead.ltd ? <span className="text-fg-3"> · no cold email</span> : null}</Fact>
             <Fact label="Website">
               {lead.websiteStatus ? SITE_STATUS_LABEL[lead.websiteStatus] ?? lead.websiteStatus : '—'}
+              {lead.foundSiteUrl && lead.websiteStatus !== 'live' ? <span className="mt-1 block text-fg-3">Own site, not linked on Google: <a href={lead.foundSiteUrl} target="_blank" rel="noreferrer" className="text-fg hover:underline">{lead.foundSiteUrl.replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '')}</a></span> : null}
               {a ? <span className="mt-1 flex flex-wrap gap-1.5">
                 {a.lhPerf !== null ? <Chip>Speed {a.lhPerf}</Chip> : null}
                 {a.lhSeo !== null ? <Chip>SEO {a.lhSeo}</Chip> : null}

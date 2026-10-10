@@ -9,6 +9,8 @@ import { parse as parseYaml } from 'yaml';
 import { z } from 'zod';
 import { OUT_DIR, ROOT } from '../config.js';
 import { getFullLead } from '../db/queries.js';
+import { reachOf } from '../score/reach.js';
+import { findCategory, loadScoring } from '../config.js';
 import type { FullLead } from '../db/types.js';
 import { getBuild } from '../build/queries.js';
 import { loadSiteTypes } from '../build/site-type.js';
@@ -47,22 +49,38 @@ export function priceFor(categoryKey: string, offer: Offer) {
 export function emailHook(full: Pick<FullLead, 'lead' | 'audit'>): string {
   const a = full.audit;
   const host = a?.final_domain ?? (full.lead.website_url ? hostOf(full.lead.website_url.startsWith('http') ? full.lead.website_url : `http://${full.lead.website_url}`) : null);
+  const expires = a?.domain_expires_at && Number.isFinite(Date.parse(a.domain_expires_at)) ? new Date(a.domain_expires_at) : null;
+  const expiresSoon = expires && expires.getTime() - Date.now() < 60 * 86_400_000 && expires.getTime() > Date.now()
+    ? `, and the domain itself expires on ${expires.toLocaleDateString('en-GB', { day: 'numeric', month: 'long' })}` : '';
   switch (a?.website_status) {
     case 'none': return "there's no website on your Google listing, so people who find you there have nowhere to go";
-    case 'down': return a.error === 'ENOTFOUND' && host ? `the website on your Google listing, ${host}, no longer exists, so anyone who taps it gets nothing` : `the website on your Google listing isn't loading${host ? ` (${host})` : ''}`;
-    case 'broken': return `the website on your Google listing${host ? `, ${host},` : ''} shows an error instead of your business`;
+    case 'down':
+    case 'broken': {
+      // What RDAP says about the domain comes first: an expired domain is the whole story, and the offer to recover it is the hook.
+      if (host && a.domain_status === 'available') return `the website on your Google listing, ${host}, has expired and the domain is free to register again, so anyone who taps it gets nothing. I can get it back for you as part of the site`;
+      if (host && a.domain_status === 'expiring') return `the website on your Google listing, ${host}, is about to expire, so anyone who taps it gets nothing`;
+      if (a.website_status === 'down') return a.error === 'ENOTFOUND' && host ? `the website on your Google listing, ${host}, no longer exists, so anyone who taps it gets nothing` : `the website on your Google listing isn't loading${host ? ` (${host})` : ''}${expiresSoon}`;
+      return `the website on your Google listing${host ? `, ${host},` : ''} shows an error instead of your business${expiresSoon}`;
+    }
     case 'facebook_only': return 'your Google listing only links to a Facebook page rather than a site of your own';
     case 'directory_only': return 'your Google listing only links to a directory page rather than a site of your own';
     case 'platform_only': return 'your Google listing only links to a booking page rather than a site of your own';
     case 'live': {
+      // Already a buyer: they paid for a site once. In order of what the owner feels most: phones, speed, the padlock, the builder, neglect.
       if (a.has_viewport === 0) return "your website doesn't work well on phones, which is where most people will find you";
       if (a.lh_perf !== null && a.lh_perf < 50) return `your website is slow on phones (Google scores it ${a.lh_perf} out of 100)`;
       if (a.https_ok === 0) return 'your website shows as "not secure" in browsers';
+      const cheap = (a.builder && loadScoring().cheap_builders.includes(a.builder)) || a.free_tier_host;
+      if (cheap) return `your website is on a ${builderName(a.builder)}-style starter plan and it shows on a phone`;
+      if (a.copyright_year && new Date().getFullYear() - a.copyright_year >= 3) return `your website looks untouched since ${a.copyright_year}`;
       return 'your website could be doing a lot more for you';
     }
     default: return "you don't have a website people can find from Google";
   }
 }
+
+const BUILDER_NAME: Record<string, string> = { wix: 'Wix', godaddy: 'GoDaddy', weebly: 'Weebly', jimdo: 'Jimdo', yell: 'Yell', ueni: 'UENI', site123: 'SITE123', strikingly: 'Strikingly', wordpress: 'WordPress', squarespace: 'Squarespace' };
+const builderName = (key: string | null) => (key && BUILDER_NAME[key]) || 'Wix';
 
 const upsellLine = (upsells: string[]) => {
   const u = upsells[0];
@@ -70,7 +88,7 @@ const upsellLine = (upsells: string[]) => {
   return `I can also ${u.charAt(0).toLowerCase()}${u.slice(1).replace(/\.$/, '')}.`;
 };
 
-export interface EmailInput { businessName: string; hook: string; previewUrl: string; rating: number | null; reviews: number; price: { build: number; monthly: number }; upsells: string[]; sender: Offer['sender'] }
+export interface EmailInput { businessName: string; hook: string; previewUrl: string; rating: number | null; reviews: number; price: { build: number; monthly: number }; upsells: string[]; sender: Offer['sender']; rebuiltFromArchive?: boolean }
 
 /** Subject and body. Plain text, one link, one price, the opt-out and postal address at the foot. */
 export function emailText(i: EmailInput): { subject: string; body: string } {
@@ -79,10 +97,11 @@ export function emailText(i: EmailInput): { subject: string; body: string } {
   const body = [
     'Hi there,',
     '',
-    `I'm ${i.sender.name}, a web developer in ${i.sender.area}. I noticed ${i.hook}, so I built ${name} a new one to show what it could look like:`,
+    `I'm ${i.sender.name}, a web developer in ${i.sender.area}. I noticed ${i.hook.replace(/\.$/, '')}. I've built ${name} a new one to show what it could look like:`,
     '',
     i.previewUrl,
     '',
+    ...(i.rebuiltFromArchive ? ["I started from the photos and words on your old site, so it should feel familiar.", ''] : []),
     `It's made for phones, loads fast, and shows ${proof}your hours and a one-tap call button.`,
     '',
     `If you'd like it, it's £${i.price.build} to finish with your own photos and words, then £${i.price.monthly} a month for hosting and any changes. ${upsellLine(i.upsells)}`,
@@ -99,10 +118,10 @@ export function emailText(i: EmailInput): { subject: string; body: string } {
 
 export const wordCount = (s: string) => s.split(/\s+/).filter((w) => /[a-z0-9£]/i.test(w)).length;
 
-export function complianceNote(emailAllowed: boolean): string {
-  return emailAllowed
-    ? 'Limited company: cold email allowed. Include your postal address and the opt-out (already in the draft).'
-    : 'Sole trader or unknown: do not cold email. Call or walk in with the script; email only if they ask for it.';
+export function complianceNote(emailAllowed: boolean, ltd = emailAllowed): string {
+  if (emailAllowed) return 'Limited company: cold email allowed. Include your postal address and the opt-out (already in the draft).';
+  if (ltd) return "Limited company, but there's no email address yet. Add one if you find it (their Instagram, a flyer, or ask in the shop), or call or walk in.";
+  return 'Sole trader or unknown: do not cold email. Call or walk in with the script; email only if they ask for it.';
 }
 
 export function whatsappText(name: string, hook: string, url: string, price: { build: number; monthly: number }, sender: Offer['sender']): string {
@@ -210,13 +229,20 @@ export function generateDelivery(slug: string): Delivery {
   mkdirSync(dir, { recursive: true });
   let upsells: string[] = [];
   let email: string | null = null;
-  try { upsells = JSON.parse(readFileSync(join(siteDir, 'acta', 'brand.json'), 'utf8')).quality?.upsells ?? []; } catch { /* none */ }
+  let rebuiltFromArchive = false;
+  try {
+    const brand = JSON.parse(readFileSync(join(siteDir, 'acta', 'brand.json'), 'utf8')) as { quality?: { upsells?: string[] }; existing_site?: { status?: string } };
+    upsells = brand.quality?.upsells ?? [];
+    rebuiltFromArchive = brand.existing_site?.status === 'archived';
+  } catch { /* none */ }
   try { email = JSON.parse(readFileSync(join(siteDir, 'acta', 'facts.json'), 'utf8')).business?.email ?? null; } catch { /* none */ }
+  // An email you added yourself wins; otherwise one published on their site, found by the audit.
+  email = full.lead.manual_email?.trim() || email || reachOf(full, findCategory(full.lead.category_key)).email;
   const price = priceFor(full.lead.category_key, offer);
   const previewUrl = b?.preview_url ?? null;
   const hook = emailHook(full);
-  const { subject, body } = emailText({ businessName: full.lead.name, hook, previewUrl: previewUrl ?? '[preview link]', rating: full.lead.rating, reviews: full.lead.review_count ?? 0, price, upsells, sender: offer.sender });
-  const emailAllowed = full.ch?.match_confidence === 'high';
+  const { subject, body } = emailText({ businessName: full.lead.name, hook, previewUrl: previewUrl ?? '[preview link]', rating: full.lead.rating, reviews: full.lead.review_count ?? 0, price, upsells, sender: offer.sender, rebuiltFromArchive });
+  const emailAllowed = full.ch?.match_confidence === 'high' && !!email;
   const channel = emailAllowed ? 'email' : (full.score?.channel ?? 'phone') === 'email' ? 'phone' : full.score?.channel ?? 'phone';
   const phone = full.lead.phone_e164 ? displayUkPhone(full.lead.phone_e164) : null;
   const compareSrc = b?.evidence_path && existsSync(b.evidence_path) ? b.evidence_path : existsSync(join(siteDir, 'acta', 'qa', 'compare.png')) ? join(siteDir, 'acta', 'qa', 'compare.png') : null;
@@ -239,7 +265,7 @@ export function generateDelivery(slug: string): Delivery {
     emlUrl: `/files/delivery/${encodeURIComponent(slug)}/email.eml`,
     price: { build: price.build, monthly: price.monthly, currency: 'GBP' },
     upsells,
-    complianceNote: complianceNote(emailAllowed),
+    complianceNote: complianceNote(emailAllowed, full.ch?.match_confidence === 'high'),
     senderMissing: senderMissing(offer),
     sentAt: prev?.sentAt ?? null, sentChannel: prev?.sentChannel ?? null,
   };
@@ -255,10 +281,19 @@ export function generateDelivery(slug: string): Delivery {
   return d;
 }
 
-export function updateDelivery(slug: string, patch: Partial<Pick<Delivery, 'subject' | 'body' | 'whatsapp'>>): Delivery {
+export function updateDelivery(slug: string, patch: Partial<Pick<Delivery, 'subject' | 'body' | 'whatsapp' | 'to'>>): Delivery {
   const d = readDelivery(slug);
   if (!d) throw new Error('No delivery yet: approve the build or generate one first');
   const next: Stored = { ...d, ...Object.fromEntries(Object.entries(patch).filter(([, v]) => typeof v === 'string')) };
+  if (typeof patch.to === 'string') {
+    // A new address changes whether email is allowed; the rest of your edits stay.
+    const full = getFullLead(slug);
+    const ltd = full?.ch?.match_confidence === 'high';
+    next.to = patch.to.trim() || null;
+    next.emailAllowed = ltd && !!next.to;
+    next.complianceNote = complianceNote(next.emailAllowed, ltd);
+    if (next.emailAllowed) next.channel = 'email';
+  }
   const compare = join(deliveryDir(slug), 'compare.png');
   writeArtifacts(next, existsSync(compare) ? compare : null);
   return next;

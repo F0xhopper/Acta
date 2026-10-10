@@ -1,11 +1,13 @@
+import { findCategory } from '../config.js';
 import { bumpRun, getAudit, leadsNeedingCompaniesHouse, saveCompaniesHouse } from '../db/queries.js';
 import type { LeadRow } from '../db/types.js';
 import { isoNow } from '../util/dates.js';
 import { log } from '../util/log.js';
 import { getCompanyProfile, searchCompanies } from './companies-house.js';
-import { matchCompany } from './match.js';
+import { matchCompany, promoteBySic } from './match.js';
 
-export interface EntityOpts { query?: string; slug?: string; force?: boolean; runId?: number; dryRun?: boolean }
+/** `medium`: look again only at medium matches, which SIC codes can now settle. */
+export interface EntityOpts { query?: string; slug?: string; force?: boolean; medium?: boolean; runId?: number; dryRun?: boolean }
 
 /** Classify each lead as a limited company (high-confidence Companies House match) or unknown. */
 export async function enrichEntities(opts: EntityOpts): Promise<{ checked: number; high: number; medium: number; errors: number }> {
@@ -28,12 +30,17 @@ export async function enrichEntities(opts: EntityOpts): Promise<{ checked: numbe
 async function enrichOne(lead: LeadRow, onRequest: () => void) {
   const audit = getAudit(lead.id);
   const ltdHint = !!audit?.ltd_hint;
+  const tradeSic = findCategory(lead.category_key)?.sic ?? [];
   const items = await searchCompanies(lead.name, onRequest);
-  const match = matchCompany(lead, items, ltdHint);
+  let match = matchCompany(lead, items, ltdHint);
   let profile: Awaited<ReturnType<typeof getCompanyProfile>> | null = null;
-  if (match.confidence === 'high' && match.item) {
+  // The profile carries the SIC codes and the incorporation date: fetched for a high match, and for a medium one
+  // when the trade has SIC codes that could settle it.
+  if (match.item && (match.confidence === 'high' || (match.confidence === 'medium' && tradeSic.length))) {
     try { profile = await getCompanyProfile(match.item.company_number, onRequest); } catch (e) { log.debug(`profile fetch failed: ${(e as Error).message}`); }
   }
+  match = promoteBySic(match, profile?.sic_codes, tradeSic);
+  if (match.via === 'sic') log.info(`${lead.slug}: ${match.item?.title} promoted to a high match, its SIC codes say ${lead.category_key}`);
   saveCompaniesHouse({
     lead_id: lead.id,
     company_number: match.item?.company_number ?? null,
@@ -45,6 +52,7 @@ async function enrichOne(lead: LeadRow, onRequest: () => void) {
     match_confidence: match.confidence,
     ltd_hint_from_site: ltdHint ? 1 : 0,
     matched_at: isoNow(),
+    date_of_creation: profile?.date_of_creation ?? match.item?.date_of_creation ?? null,
   });
   log.debug(`${lead.slug}: CH ${match.confidence} (${match.similarity.toFixed(2)}) ${match.item?.title ?? ''}`);
 }

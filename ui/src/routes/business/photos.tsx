@@ -5,6 +5,7 @@ import type { Photo, PhotoSet } from '../../../../src/ui/api-types';
 import { usePhotos, useSavePhotos, useSkipPhotos, type JobOk } from '../../api';
 import { useAgentGuard } from '../../components/agent-guard';
 import { Button } from '../../components/ui/button';
+import { Confirm } from '../../components/ui/dialog';
 import { Chip, Dot, Kbd } from '../../components/ui/chip';
 import { Dialog } from '../../components/ui/dialog';
 import { Empty } from '../../components/ui/empty';
@@ -80,7 +81,12 @@ function PhotoSorter({ slug, set }: { slug: string; set: PhotoSet }) {
     toast({ kind: r.ok ? 'ok' : 'error', text: r.message });
     if (r.ok && r.job) navigate(bizPath(slug, 'progress'));
   };
-  const saveAndContinue = async () => done(await guard('Continue the build', (override) => save.mutateAsync({ slug, choices: toChoices(state, list), resume: true, override })));
+  const [askNone, setAskNone] = useState(false);
+  const sortedAny = Object.values(state.choices).some((c) => c !== null);
+  const hasHero = Object.values(state.choices).includes('hero');
+  const continueBuild = async () => done(await guard('Continue the build', (override) => save.mutateAsync({ slug, choices: toChoices(state, list), resume: true, override })));
+  /** Nothing sorted, or no hero chosen: ask first, so a click on Save never keeps every photo by accident. */
+  const saveAndContinue = () => { if (!sortedAny || !hasHero) setAskNone(true); else void continueBuild(); };
   const saveOnly = async () => {
     try { done(await save.mutateAsync({ slug, choices: toChoices(state, list), resume: false })); }
     catch (e) { toast({ kind: 'error', text: `Couldn't save: ${(e as Error).message}` }); }
@@ -89,6 +95,11 @@ function PhotoSorter({ slug, set }: { slug: string; set: PhotoSet }) {
 
   return (
     <div className="flex flex-col gap-4">
+      <Confirm open={askNone} onClose={() => setAskNone(false)} confirmLabel={sortedAny ? 'Continue without a hero' : `Keep all ${list.length}`}
+        onConfirm={() => { setAskNone(false); void continueBuild(); }}
+        title={sortedAny ? 'No hero photo chosen' : "You haven't sorted any photos"}>
+        {sortedAny ? 'The agent will pick the hero itself.' : `Every photo will be kept, including any doorstep, cluttered or close-up shots, and the agent won't drop them. Sort them first for a better site.`}
+      </Confirm>
       {set.waiting ? (
         <Notice tone="warn" title="The build is waiting for you">Sort the photos, then continue. The agent treats dropped photos as unusable and builds the home page around the hero.</Notice>
       ) : (
@@ -131,7 +142,7 @@ function PhotoSorter({ slug, set }: { slug: string; set: PhotoSet }) {
           <>
             <Button variant="ghost" loading={skip.isPending} onClick={() => void skipAuto()}>Skip, use the automatic choice</Button>
             <div className="flex flex-col items-end gap-1">
-              <Button variant="primary" size="lg" loading={save.isPending} onClick={() => void saveAndContinue()}>Save and continue build</Button>
+              <Button variant="primary" size="lg" loading={save.isPending} onClick={saveAndContinue}>Save and continue build</Button>
               {c.unsorted ? <span className="text-xs text-fg-3">{plural(c.unsorted, 'unsorted photo')} will be kept.</span> : null}
             </div>
           </>
